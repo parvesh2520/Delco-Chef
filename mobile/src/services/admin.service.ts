@@ -1,115 +1,83 @@
-// Ops/Super Admin operations. MOCK. Role checks here are UI conveniences; enforce them in FastAPI.
-// Target endpoints under /admin/*.
-import type { AdminAccount, AdminDashboardStats, AdminRole, RequestStatus, SettingsSectionKey } from '../types';
-import { db, mock, mockError, newId } from './mock';
+// Ops / Super Admin. The UI hides actions by role for convenience; FastAPI enforces every permission.
+import type {
+  AdminAccount, AdminDashboardStats, AssignmentHistoryEntry, AttendanceRecord, AuditLog, Chef, ChefSuggestion, Payout, RequestStatus,
+  ServiceRequest, SettingsSection, SettingsSectionKey, Subscription,
+} from '../types';
+import { api } from './api';
 
-const log = (actor: string, actorRole: AdminRole, action: string, target: string) =>
-  db.auditLogs.unshift({ id: newId('l'), actor, actorRole, action, target, at: new Date().toISOString() });
+type Page<T> = { items: T[]; nextCursor: string | null };
+
+export interface AdminRequest extends ServiceRequest {
+  targetVisit?: { id: string; date: string; slot: string; kind: string; status: string; chefId?: string } | null;
+}
 
 export const adminService = {
-  getDashboard: (): Promise<AdminDashboardStats> =>
-    mock({
-      pendingRequests: db.requests.filter((r) => r.status === 'pending_assignment').length,
-      trialsToday: 3,
-      activeSubscriptions: db.subscriptions.filter((s) => s.status === 'active').length + 41,
-      pendingPayments: db.payments.filter((p) => p.status !== 'paid').length,
-      attendanceExceptions: db.attendance.filter((a) => a.status === 'exception').length,
-      pendingChefApplications: db.chefs.filter((c) => c.status === 'submitted' || c.status === 'under_review').length,
-    }),
+  getDashboard: () => api.get<AdminDashboardStats>('/admin/dashboard'),
+  getStageSummary: () => api.get<Record<string, unknown>>('/admin/stage-summary'),
 
-  listRequests: (status?: RequestStatus) => mock(status ? db.requests.filter((r) => r.status === status) : db.requests),
-  getCustomer: (customerId: string) => {
-    const reqs = db.requests.filter((r) => r.customerId === customerId);
-    if (!reqs.length) return mock(null);
-    const subs = db.subscriptions.filter((s) => reqs.some((r) => r.id === s.requestId));
-    return mock({ id: customerId, name: reqs[0].customerName, phone: reqs[0].customerPhone, address: reqs[0].address, requests: reqs, subscriptions: subs });
-  },
+  listRequests: (status?: RequestStatus | 'closed') =>
+    api.get<Page<ServiceRequest>>('/admin/requests', { status, limit: 100 }).then((p) => p.items),
+  getRequest: (id: string) => api.get<AdminRequest>(`/admin/requests/${id}`),
+  getCustomer: (customerId: string) =>
+    api.get<{ id: string; name: string; phone: string; address: ServiceRequest['address']; requests: ServiceRequest[]; subscriptions: Subscription[] }>(
+      `/admin/customers/${customerId}`
+    ),
+  revealPhone: (userId: string, reason: string) => api.post<{ phone: string }>(`/admin/users/${userId}/reveal-phone`, { reason }),
 
-  /** Ranked list: eligible (approved, in radius, free slot) first, ineligible with reasons. */
-  getSuggestions: (_requestId: string) => mock(db.suggestions),
-  getChef: (chefId: string) => mock(db.chefs.find((c) => c.id === chefId) ?? db.suggestions.find((s) => s.chefId === chefId) ?? null),
-  assignChef: (requestId: string, chefId: string, reason?: string) => {
-    const req = db.requests.find((r) => r.id === requestId);
-    const s = db.suggestions.find((x) => x.chefId === chefId);
-    if (!req || !s) return mockError('Not found');
-    if (!s.eligible) return mockError('Only eligible, approved chefs can be assigned.');
-    const isReassign = !!req.assignedChefId;
-    Object.assign(req, { assignedChefId: chefId, assignedChefName: s.chefName, status: req.status === 'pending_assignment' ? 'chef_assigned' : req.status });
-    const pending = req.trials.find((t) => t.status === 'pending_assignment');
-    if (pending) Object.assign(pending, { status: 'scheduled', chefId, chefName: s.chefName });
-    db.assignmentHistory.unshift({ id: newId('h'), requestId, chefName: s.chefName, action: isReassign ? 'reassigned' : 'assigned', reason, by: 'You', at: new Date().toISOString() });
-    return mock(req, 600);
-  },
-  getAssignmentHistory: (requestId: string) => mock(db.assignmentHistory.filter((h) => h.requestId === requestId)),
+  /** Ranked list straight from the server's eligibility + scoring engine. */
+  getSuggestions: (requestId: string, date?: string) =>
+    api.get<ChefSuggestion[]>(`/admin/requests/${requestId}/suggestions`, { date }).then((list) =>
+      list.map((s) => ({
+        ...s,
+        rawScore: s.score, // spec score (0–1) as stored on the booking
+        score: Math.round(s.score * 1000) / 10,
+        breakdown: {
+          rating: Math.round(s.breakdown.rating * 100), distance: Math.round(s.breakdown.distance * 100),
+          workload: Math.round(s.breakdown.workload * 100), cuisine: s.breakdown.cuisine,
+        },
+      }))
+    ),
+  getChef: (chefId: string) => api.get<Chef>(`/admin/chefs/${chefId}`),
+  assignChef: (requestId: string, chefId: string, reason?: string) =>
+    api.post<ServiceRequest>(`/admin/requests/${requestId}/assign`, { chefId, reason }),
+  getAssignmentHistory: (requestId: string) => api.get<AssignmentHistoryEntry[]>(`/admin/requests/${requestId}/assignments`),
 
-  listTrialBoard: () => mock(db.requests.filter((r) => r.trials.length > 0)),
-  /** Ops can push trial 2 when the customer asked for another trial. */
-  pushSecondTrial: (requestId: string) => {
-    const req = db.requests.find((r) => r.id === requestId);
-    const t2 = req?.trials.find((t) => t.number === 2);
-    if (!req || !t2) return mockError('Second trial has not been requested.');
-    t2.status = 'scheduled';
-    req.status = 'trial_scheduled';
-    return mock(req);
-  },
+  listTrialBoard: () => api.get<ServiceRequest[]>('/admin/board'),
+  getBoardMoves: (requestId: string) => api.get<{ from: string; to: string; by: string; at: string; note?: string }[]>(`/admin/requests/${requestId}/moves`),
+  /** Admin pushes trial 2 with a chef from the ranked list and a date. */
+  pushSecondTrial: (requestId: string, chefId: string, date: string) =>
+    api.post<ServiceRequest>(`/admin/requests/${requestId}/push-trial`, { chefId, date }),
+  moveCard: (requestId: string, to: string, note?: string) => api.post<ServiceRequest>(`/admin/requests/${requestId}/move`, { to, note }),
 
-  listAttendance: () => mock(db.attendance),
-  getAttendance: (id: string) => mock(db.attendance.find((a) => a.id === id) ?? null),
-  resolveAttendance: (id: string, resolution: string) => {
-    const a = db.attendance.find((x) => x.id === id);
-    if (!a) return mockError('Record not found');
-    Object.assign(a, { status: 'resolved', resolution });
-    return mock(a);
-  },
+  listAttendance: () => api.get<AttendanceRecord[]>('/admin/attendance'),
+  getAttendance: (id: string) => api.get<AttendanceRecord>(`/admin/attendance/${id}`),
+  resolveAttendance: (id: string, resolution: string, workedMinutes?: number) =>
+    api.post<AttendanceRecord>(`/admin/attendance/${id}/resolve`, { resolution, workedMinutes }),
 
-  getSettings: () => mock(db.settings),
-  getSettingsSection: (key: SettingsSectionKey) => mock(db.settings.find((s) => s.key === key) ?? null),
-  saveSettingsSection: (key: SettingsSectionKey, values: Record<string, string>) => {
-    const s = db.settings.find((x) => x.key === key);
-    if (!s) return mockError('Unknown settings section');
-    s.fields.forEach((f) => (f.value = values[f.key] ?? f.value));
-    return mock(s);
-  },
+  listPaymentLinks: () => api.get<{ id: string; paymentId: string; amount: number; status: string; expiresAt: string; customerName: string }[]>('/admin/payment-links'),
+
+  getSettings: () => api.get<SettingsSection[]>('/admin/settings'),
+  getSettingsSection: (key: SettingsSectionKey) => api.get<SettingsSection>(`/admin/settings/${key}`),
+  saveSettingsSection: (key: SettingsSectionKey, values: Record<string, string>) =>
+    api.put<SettingsSection>(`/admin/settings/${key}`, { values }),
 
   // ----- Super Admin only -----
-  listAdmins: () => mock(db.admins),
-  createAdmin: (a: Pick<AdminAccount, 'name' | 'phone' | 'email' | 'role'>) => {
-    if (db.admins.some((x) => x.phone === a.phone)) return mockError('An admin with this phone already exists.');
-    const created = { ...a, id: newId('ad'), active: true, createdAt: new Date().toISOString() };
-    db.admins.push(created);
-    log('You', 'super_admin', 'Created admin', `${a.name} (${a.role})`);
-    return mock(created);
-  },
-  setAdminActive: (id: string, active: boolean) => {
-    const a = db.admins.find((x) => x.id === id);
-    return a ? mock(Object.assign(a, { active })) : mockError('Admin not found');
-  },
+  listAdmins: () => api.get<AdminAccount[]>('/admin/admins'),
+  createAdmin: (a: Pick<AdminAccount, 'name' | 'phone' | 'email' | 'role'>) => api.post<AdminAccount>('/admin/admins', a),
+  setAdminActive: (id: string, active: boolean) => api.patch<AdminAccount>(`/admin/admins/${id}`, { active }),
 
-  listChefApplications: () => mock(db.chefs),
-  decideChefApplication: (chefId: string, approve: boolean, reason?: string) => {
-    const c = db.chefs.find((x) => x.id === chefId);
-    if (!c) return mockError('Chef not found');
-    Object.assign(c, { status: approve ? 'approved' : 'rejected', rejectionReason: approve ? undefined : reason });
-    log('You', 'super_admin', approve ? 'Approved chef' : 'Rejected chef', c.name);
-    return mock(c);
-  },
-  /** Reveal is audit-logged. Mock returns a fake full value. */
-  revealDocument: (chefId: string, docId: string) => {
-    const c = db.chefs.find((x) => x.id === chefId);
-    const d = c?.documents.find((x) => x.id === docId);
-    if (!c || !d) return mockError('Document not found');
-    log('You', 'super_admin', 'Revealed document', `${c.name} · ${d.type}`);
-    return mock({ value: d.maskedValue.replace(/X|•/g, '7') });
-  },
-  listAuditLogs: () => mock(db.auditLogs),
+  listChefApplications: () => api.get<Chef[]>('/admin/chef-applications'),
+  decideChefApplication: (chefId: string, approve: boolean, reason?: string) =>
+    api.post<Chef>(`/admin/chef-applications/${chefId}/decision`, { approve, reason }),
+  /** Every reveal is written to the audit log on the server. */
+  revealDocument: (chefId: string, docId: string, reason?: string) =>
+    api.post<{ value: string | null; fileUrl?: string }>(`/admin/chefs/${chefId}/documents/${docId}/reveal`, { reason }),
+  revealBank: (chefId: string, reason?: string) => api.post<{ accountNumber: string; upi?: string }>(`/admin/chefs/${chefId}/bank/reveal`, { reason }),
+  listAuditLogs: () => api.get<AuditLog[]>('/admin/audit-logs'),
 
-  listPayouts: () => mock(db.payouts),
-  getPayout: (id: string) => mock(db.payouts.find((p) => p.id === id) ?? null),
-  decidePayout: (id: string, approve: boolean) => {
-    const p = db.payouts.find((x) => x.id === id);
-    if (!p) return mockError('Payout not found');
-    p.status = approve ? 'approved' : 'rejected';
-    log('You', 'super_admin', approve ? 'Approved payout' : 'Rejected payout', `${p.chefName} · ${p.period}`);
-    return mock(p);
-  },
+  listPayouts: () => api.get<Payout[]>('/admin/payouts'),
+  getPayout: (id: string) => api.get<Payout & { items: { id: string; amount: number; kind: string; note?: string }[] }>(`/admin/payouts/${id}`),
+  decidePayout: (id: string, approve: boolean) => api.post<Payout>(`/admin/payouts/${id}/decision`, { approve }),
+  markPayoutPaid: (id: string, bankReference: string) => api.post<Payout>(`/admin/payouts/${id}/decision`, { approve: true, bankReference }),
+  adjustPayout: (id: string, amountPaise: number, reason: string) => api.post<Payout>(`/admin/payouts/${id}/adjustments`, { amountPaise, reason }),
 };

@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Card, InfoRow, MapPreview, Notice, Screen, Txt } from '../../../../../src/components';
 import { useChefId, VisitGate } from '../../../../../src/features/chef';
+import { useLocationSharing } from '../../../../../src/features/tracking';
 import { visitService } from '../../../../../src/services';
 
 /** Travelling status with active navigation / tracking. */
@@ -11,16 +12,16 @@ export default function ChefTravelling() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const chefId = useChefId();
   const qc = useQueryClient();
-  const tracking = useQuery({ queryKey: ['tracking', id], queryFn: () => visitService.getTracking(id), refetchInterval: 20000 });
+  const visit = useQuery({ queryKey: ['visit', id], queryFn: () => visitService.get(id) });
+  const sharing = useLocationSharing(id, visit.data?.status === 'chef_travelling');
   const arrive = useMutation({
-    mutationFn: () => visitService.markArrived(id),
+    mutationFn: () => visitService.stopTravel(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['visit', id] });
       qc.invalidateQueries({ queryKey: ['chefVisits', chefId] });
       router.replace(`/chef/visit/${id}/customer`);
     },
   });
-  const t = tracking.data;
 
   return (
     <VisitGate id={id}>
@@ -33,17 +34,17 @@ export default function ChefTravelling() {
               <Button title="Open in Google Maps" variant="secondary" icon="navigate-outline" onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`)} />
             </>
           }>
-            <MapPreview destination={t?.destination ?? v.address} chef={t?.chefLocation} height={260} label="Route to customer" />
+            <MapPreview destination={v.address} height={260} label="Route to customer" />
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Txt variant="h3">{t?.etaMinutes != null ? `${t.etaMinutes} min away` : 'Calculating ETA…'}</Txt>
+                <Txt variant="h3">{sharing.lastSentAt ? 'Sharing live location' : 'Starting GPS…'}</Txt>
                 <Badge status={v.status} />
               </View>
-              <InfoRow icon="speedometer-outline" label="Distance" value={t?.distanceKm != null ? `${t.distanceKm} km` : undefined} />
               <InfoRow icon="time-outline" label="Slot" value={v.slot} />
               <InfoRow icon="location-outline" label="Address" value={`${v.address.line1}, ${v.address.city}`} />
             </Card>
-            <Notice icon="radio-outline">Live location is shared with the customer. Location updates are simulated in this build.</Notice>
+            <Notice icon="radio-outline">Your location is sent every 5 seconds and is visible to this customer only, from 15 minutes before the visit until you check in. Keep the app open while travelling.</Notice>
+            {sharing.error && <Notice tone="warning">{sharing.error}</Notice>}
             {arrive.isError && <Notice tone="error">{arrive.error.message}</Notice>}
           </Screen>
         );

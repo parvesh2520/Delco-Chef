@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Notice, Screen, Section, StatusHero, TextField } from '../../../../../src/components';
 import { useChefId } from '../../../../../src/features/chef';
+import { currentPosition } from '../../../../../src/features/tracking';
 import { visitService } from '../../../../../src/services';
 import { useToast } from '../../../../../src/store';
 
@@ -17,7 +18,10 @@ export default function ChefCustomerUnavailable() {
   const [note, setNote] = useState('');
   const valid = tried.length === STEPS.length && note.trim().length >= 5;
   const report = useMutation({
-    mutationFn: () => visitService.markCustomerUnavailable(id, `${tried.join('; ')}. ${note.trim()}`),
+    mutationFn: async () => {
+      const pos = await currentPosition().catch(() => undefined);
+      return visitService.markCustomerUnavailable(id, `${tried.join('; ')}. ${note.trim()}`, pos);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['visit', id] });
       qc.invalidateQueries({ queryKey: ['chefVisits', chefId] });

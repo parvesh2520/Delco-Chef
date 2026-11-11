@@ -3,11 +3,11 @@ import type { BookableService, BookingRequirements, ChefApplicationStatus, Sessi
 import type { ChefApplicationDraft } from '../services/chef.service';
 
 // ---------- Auth ----------
-// Session lives in memory only (mock). Persist the token with expo-secure-store when real auth lands.
+// Access token lives in memory only; the refresh token is kept in SecureStore (services/session.ts).
 interface AuthState {
   session: Session | null;
   sessionExpired: boolean;
-  signIn: (session: Session) => void;
+  signIn: (session: Session & { refreshToken?: string }) => void;
   signOut: () => void;
   expireSession: () => void;
   setOnboarded: () => void;
@@ -18,7 +18,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   sessionExpired: false,
-  signIn: (session) => set({ session, sessionExpired: false }),
+  signIn: ({ refreshToken: _r, ...session }) => set({ session, sessionExpired: false }),
   signOut: () => set({ session: null }),
   expireSession: () => set({ session: null, sessionExpired: true }),
   setOnboarded: () => set((s) => (s.session ? { session: { ...s.session, onboarded: true } } : s)),

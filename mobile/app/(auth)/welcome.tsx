@@ -5,57 +5,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Txt } from '../../src/components';
 import { colors, radius, spacing } from '../../src/theme';
-import { useAuthStore } from '../../src/store';
-import { db } from '../../src/services/mock';
 
 export default function Welcome() {
-  const signIn = useAuthStore((s) => s.signIn);
-
-  const loginAsCustomer = () => {
-    signIn({
-      user: {
-        id: 'c1',
-        fullName: db.customerProfile.fullName,
-        phone: '9876543210',
-        role: 'customer',
-        createdAt: new Date().toISOString(),
-      },
-      token: 'mock-customer-token',
-      onboarded: true,
-    });
-    router.replace('/customer/home');
-  };
-
-  const loginAsChef = () => {
-    const chef = db.chefs[0]; // Sunita Devi (Approved)
-    signIn({
-      user: {
-        id: chef.id,
-        fullName: chef.name,
-        phone: chef.phone,
-        role: 'chef',
-        createdAt: chef.joinedAt,
-      },
-      token: 'mock-chef-token',
-      chefStatus: 'approved',
-    });
-    router.replace('/chef/home');
-  };
-
-  const loginAsAdmin = () => {
-    const admin = db.admins[0]; // Karan Mehta (Ops Admin)
-    signIn({
-      user: {
-        id: admin.id,
-        fullName: admin.name,
-        phone: admin.phone,
-        role: admin.role,
-        createdAt: admin.createdAt,
-      },
-      token: 'mock-admin-token',
-    });
-    router.replace('/admin/dashboard');
-  };
+  // Every role signs in with a real OTP; there is no shortcut session.
+  const loginAsCustomer = () => router.push('/phone');
+  const loginAsChef = () => router.push('/chef-login');
+  const loginAsAdmin = () => router.push('/admin-login');
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -64,7 +19,7 @@ export default function Welcome() {
         <View style={styles.hero}>
           <View style={styles.city}>
             <Ionicons name="location" size={14} color={colors.primary} />
-            <Txt variant="label" color={colors.primary}>Currently serving Noida & Delhi NCR</Txt>
+            <Txt variant="label" color={colors.primary}>Currently serving Bengaluru</Txt>
           </View>
           <Txt variant="display" color={colors.textOnDark}>
             Delco Chefs
@@ -119,9 +74,9 @@ export default function Welcome() {
 
           {/* 1-Click Interactive Portal Switcher */}
           <View style={styles.demoSection}>
-            <Txt variant="eyebrow" color={colors.purple}>INSTANT DEMO • SELECT A ROLE</Txt>
+            <Txt variant="eyebrow" color={colors.purple}>SIGN IN • SELECT YOUR ROLE</Txt>
             <Txt variant="small" color={colors.textMuted}>
-              Tap any role below to instantly enter that experience:
+              Choose how you use Delco. You’ll verify your number with a one-time code.
             </Txt>
 
             <View style={styles.roleButtonsGrid}>

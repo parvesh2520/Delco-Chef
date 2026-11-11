@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, ConfirmDialog, InfoRow, Notice, Screen, Section, Txt } from '../../../src/components';
+import { Badge, Button, Card, ChipGroup, InfoRow, Notice, Screen, Section, Txt } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
-import { Row, useAdminInvalidate } from '../../../src/features/admin';
+import { Row } from '../../../src/features/admin';
 import { QueryView } from '../../../src/components';
-import { adminService, bookingService, paymentService } from '../../../src/services';
-import { useToast } from '../../../src/store';
+import { adminService, paymentService } from '../../../src/services';
 import type { ServiceRequest, Trial } from '../../../src/types';
-import { formatDateTime, humanize } from '../../../src/utils';
+import { formatDateTime, humanize, toDateKey } from '../../../src/utils';
 
 const decisionLabel = (t: Trial, isLast: boolean) => {
   if (t.decision) return humanize(t.decision);
@@ -26,27 +25,26 @@ const conversion = (r: ServiceRequest) => {
 /** Trial 1 / Trial 2 management for one request. */
 export default function TrialManagement() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
-  const [confirm, setConfirm] = useState(false);
-  const invalidate = useAdminInvalidate();
-  const query = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => bookingService.getRequest(requestId) });
+  const [pushDate, setPushDate] = useState<string>();
+  const query = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => adminService.getRequest(requestId) });
   const limit = useQuery({ queryKey: ['admin', 'settings', 'trials'], queryFn: () => adminService.getSettingsSection('trials') });
   const subId = query.data?.subscriptionId;
   const payment = useQuery({ queryKey: ['admin', 'payment-for', subId], queryFn: () => paymentService.getForSubscription(subId!), enabled: !!subId });
-  const push = useMutation({
-    mutationFn: () => adminService.pushSecondTrial(requestId),
-    onSuccess: async () => {
-      setConfirm(false);
-      await invalidate();
-      useToast.getState().show('Second trial pushed');
-    },
-  });
   const maxTrials = Number(limit.data?.fields[0]?.value ?? 2);
+  const dates = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i + 1);
+      return { value: toDateKey(d), label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) };
+    }),
+    []
+  );
 
   return (
     <Screen title="Trial management">
       <QueryView query={query} empty={{ title: 'Request not found' }}>
         {(r) => {
-          const t2 = r.trials.find((t) => t.number === 2);
+          const t2 = r.trials.find((t) => t.number === 2 && t.status !== 'cancelled');
           const conv = conversion(r);
           return (
             <>
@@ -55,7 +53,7 @@ export default function TrialManagement() {
                   <Txt variant="h2" style={{ flex: 1 }}>{r.customerName}</Txt>
                   <Badge status={r.status} />
                 </Row>
-                <Txt variant="small">{SERVICE_LABELS[r.service]} · {r.trials.length} of {maxTrials} free trials used for this service</Txt>
+                <Txt variant="small">{SERVICE_LABELS[r.service]} · {r.trials.filter((t) => t.counted).length} of {maxTrials} free trials used for this service</Txt>
               </Card>
 
               {[1, 2].map((n) => {
@@ -79,12 +77,19 @@ export default function TrialManagement() {
                 );
               })}
 
-              {t2?.status === 'pending_assignment' && r.isOpen && (
+              {r.stage === 'trial2_requested' && (
                 <>
-                  <Notice tone="warning">Customer requested another trial. Assign a chef, then push Trial 2 to schedule it.</Notice>
-                  {!t2.chefId && <Button title="Assign chef for Trial 2" variant="secondary" onPress={() => router.push(`/admin/assign/${r.id}`)} />}
-                  <Button title="Push second trial" icon="arrow-forward-circle-outline" onPress={() => setConfirm(true)} />
+                  <Notice tone="warning">Customer requested another trial. Assign a chef from the ranked list.</Notice>
+                  <Button title="Assign chef for Trial 2" variant="secondary" onPress={() => router.push(`/admin/assign/${r.id}`)} />
                 </>
+              )}
+              {r.stage === 'trial1_awaiting_decision' && !t2 && (
+                <Section title="Push second trial">
+                  <Txt variant="small">Schedule Trial 2 without waiting for the customer. Pick a date, then a chef from the ranked list.</Txt>
+                  <ChipGroup options={dates} value={pushDate} onChange={(v) => setPushDate(v as string)} />
+                  <Button title="Choose chef & push" icon="arrow-forward-circle-outline" disabled={!pushDate}
+                    onPress={() => router.push({ pathname: '/admin/assign/[requestId]', params: { requestId: r.id, push: '1', date: pushDate! } })} />
+                </Section>
               )}
 
               <Section title="Subscription conversion">
@@ -97,20 +102,10 @@ export default function TrialManagement() {
                   )}
                 </Card>
               </Section>
-              {push.isError && <Notice tone="error">{push.error.message}</Notice>}
             </>
           );
         }}
       </QueryView>
-      <ConfirmDialog
-        visible={confirm}
-        title="Push second trial?"
-        message="The second trial will be scheduled and the customer notified. After it, the customer can only Subscribe or Reject."
-        confirmLabel="Push trial"
-        loading={push.isPending}
-        onCancel={() => setConfirm(false)}
-        onConfirm={() => push.mutate()}
-      />
     </Screen>
   );
 }

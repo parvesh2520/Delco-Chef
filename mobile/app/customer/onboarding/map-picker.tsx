@@ -1,40 +1,67 @@
 import React, { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Button, Card, ChipGroup, MapPreview, MockTag, Notice, Screen, Txt } from '../../../src/components';
-import { NOIDA_CENTRE, usePickedLocation } from '../../../src/features/customer';
+import MapView, { Marker, type MapPressEvent } from 'react-native-maps';
+import { Button, Card, MapPreview, Notice, Screen, Txt } from '../../../src/components';
+import { APP_CONFIG } from '../../../src/constants';
+import { DEFAULT_CENTRE, usePickedLocation } from '../../../src/features/customer';
+import { currentPosition } from '../../../src/features/tracking';
+import { colors, radius } from '../../../src/theme';
 import type { LatLng } from '../../../src/types';
 
-// Mock pin positions until a real map (react-native-maps + Places) is integrated.
-const PRESETS: Record<string, LatLng> = {
-  'Sector 18': { lat: 28.5708, lng: 77.3261 },
-  'Sector 50': { lat: 28.5703, lng: 77.3651 },
-  'Sector 62': { lat: 28.6208, lng: 77.3633 },
-  'Sector 74': { lat: 28.5733, lng: 77.3881 },
-  'Sector 137': { lat: 28.5089, lng: 77.4085 },
-};
-
-/** Map-based address picker. Used by onboarding and Manage addresses. */
+/** Map-based address picker: tap or drag the pin, or use the device's current location. Used by onboarding and Manage addresses. */
 export default function MapPicker() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
-  const initial = params.lat && params.lng ? { lat: Number(params.lat), lng: Number(params.lng) } : NOIDA_CENTRE;
+  const initial = params.lat && params.lng ? { lat: Number(params.lat), lng: Number(params.lng) } : DEFAULT_CENTRE;
   const [pin, setPin] = useState<LatLng>(initial);
-  const [area, setArea] = useState<string>();
+  const [locating, setLocating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const setPicked = usePickedLocation((s) => s.setPicked);
+  const onPress = (e: MapPressEvent) => setPin({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude });
+  const locate = async () => {
+    setLocating(true);
+    setError(null);
+    try {
+      const p = await currentPosition();
+      setPin({ lat: p.lat, lng: p.lng });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLocating(false);
+    }
+  };
   return (
     <Screen
       title="Pin your location"
-      subtitle="Place the pin on your building entrance."
+      subtitle="Tap the map or drag the pin onto your building entrance."
       footer={<Button title="Use this location" icon="checkmark" onPress={() => (setPicked(pin), router.back())} />}
     >
-      <MapPreview destination={pin} height={300} label="Selected location" />
+      {APP_CONFIG.mapsEnabled ? (
+        <View style={styles.map}>
+          <MapView
+            style={StyleSheet.absoluteFill}
+            initialRegion={{ latitude: pin.lat, longitude: pin.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+            region={{ latitude: pin.lat, longitude: pin.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+            onPress={onPress}
+          >
+            <Marker draggable coordinate={{ latitude: pin.lat, longitude: pin.lng }} pinColor={colors.primary}
+              onDragEnd={(e) => setPin({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })} />
+          </MapView>
+        </View>
+      ) : (
+        <MapPreview destination={pin} height={300} label="Selected location" />
+      )}
       <Card>
         <Txt variant="label">Selected</Txt>
-        <Txt variant="bodyStrong">{area ?? 'Custom pin'} · {pin.lat.toFixed(4)}, {pin.lng.toFixed(4)}</Txt>
+        <Txt variant="bodyStrong">{pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}</Txt>
       </Card>
-      <Txt variant="label">Move pin to</Txt>
-      <ChipGroup options={Object.keys(PRESETS)} value={area} onChange={(v) => { const a = v as string; setArea(a); setPin(PRESETS[a]); }} />
-      <Notice>Search, drag-to-pin and current-location detection arrive with the maps SDK integration.</Notice>
-      <MockTag>Mock map — preset locations only</MockTag>
+      <Button title="Use my current location" variant="secondary" icon="locate-outline" loading={locating} onPress={locate} />
+      {error && <Notice tone="error">{error}</Notice>}
+      <Notice>The pin is saved with your address so your chef’s check-in and ETA use the exact spot. Locations must be within India.</Notice>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  map: { height: 300, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+});

@@ -1,0 +1,18 @@
+Bitmap Heap Scan on visits  (cost=60.01..1413.07 rows=1 width=24) (actual time=5.643..5.643 rows=0 loops=1)
+  Recheck Cond: ((chef_id = ANY ((InitPlan 1).col1)) AND (starts_at < (now() + '30 days'::interval)))
+  Filter: (((status)::text = ANY ('{scheduled,completed}'::text[])) AND (ends_at > (now() + '29 days'::interval)))
+  Rows Removed by Filter: 24000
+  Heap Blocks: exact=512
+  Buffers: shared hit=362 read=249
+  InitPlan 1
+    ->  Limit  (cost=0.00..5.20 rows=200 width=8) (actual time=0.015..0.038 rows=200 loops=1)
+          Buffers: shared hit=5
+          ->  Seq Scan on chefs  (cost=0.00..13.00 rows=500 width=8) (actual time=0.015..0.030 rows=200 loops=1)
+                Buffers: shared hit=5
+  ->  Bitmap Index Scan on ix_visits_chef_starts  (cost=0.00..54.80 rows=1189 width=0) (actual time=0.789..0.790 rows=24001 loops=1)
+        Index Cond: ((chef_id = ANY ((InitPlan 1).col1)) AND (starts_at < (now() + '30 days'::interval)))
+        Buffers: shared hit=80 read=19
+Planning:
+  Buffers: shared hit=266
+Planning Time: 1.102 ms
+Execution Time: 5.675 ms

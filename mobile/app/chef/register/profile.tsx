@@ -23,7 +23,7 @@ export default function ChefRegisterProfile() {
     <Screen title="Profile information" footer={<Button title="Continue" onPress={next} />}>
       <StepProgress step={2} total={5} label="Profile" />
       <Section title="Profile photo">
-        <PhotoCapture label="Clear, front-facing photo" icon="person-circle-outline" captured={hasPhoto} onCapture={() => update({ documents: { ...draft.documents, photo: 'profile-photo.jpg' } })} />
+        <PhotoCapture label="Clear, front-facing photo" icon="person-circle-outline" captured={draft.documents?.photo ? { uri: draft.documents.photo, mimeType: 'image/jpeg' } : null} onCapture={(ph) => update({ documents: { ...draft.documents, photo: ph.uri } })} front />
         {tried && !hasPhoto && <Notice tone="error">Add a profile photo.</Notice>}
       </Section>
       <TextField label="About you" multiline value={extras.about} onChangeText={(about) => extras.update({ about })} error={tried ? aboutError : undefined} placeholder="Years in home kitchens, the food you love cooking…" />

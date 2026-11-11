@@ -18,7 +18,7 @@ export default function ChefDocuments() {
   const reveal = useMutation({
     mutationFn: (doc: ChefDocument) => adminService.revealDocument(id, doc.id),
     onSuccess: (res, doc) => {
-      setRevealed((r) => ({ ...r, [doc.id]: res.value }));
+      setRevealed((r) => ({ ...r, [doc.id]: res.value ?? 'Image only — open the file' }));
       setTarget(null);
       invalidate();
     },

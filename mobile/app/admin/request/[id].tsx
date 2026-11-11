@@ -5,13 +5,13 @@ import { Badge, Button, Card, InfoRow, ListGroup, ListRow, Notice, Screen, Secti
 import { DIET_LABELS, MEAL_LABELS, SERVICE_LABELS } from '../../../src/constants';
 import { Row } from '../../../src/features/admin';
 import { QueryView } from '../../../src/components';
-import { bookingService } from '../../../src/services';
+import { adminService } from '../../../src/services';
 import { formatDate, formatDateTime, humanize } from '../../../src/utils';
 
 /** Booking request details with assignment actions. */
 export default function RequestDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const query = useQuery({ queryKey: ['admin', 'request', id], queryFn: () => bookingService.getRequest(id) });
+  const query = useQuery({ queryKey: ['admin', 'request', id], queryFn: () => adminService.getRequest(id) });
   return (
     <Screen title="Request details" refreshing={query.isRefetching} onRefresh={query.refetch}>
       <QueryView query={query} empty={{ title: 'Request not found' }}>

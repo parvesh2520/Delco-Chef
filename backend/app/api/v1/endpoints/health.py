@@ -1,20 +1,28 @@
 from fastapi import APIRouter
-from app.schemas.health import HealthCheck
+from fastapi.responses import JSONResponse
+
 from app.core.config import settings
+from app.core.database import check_database
 
-router = APIRouter()
+router = APIRouter(tags=["Health"])
 
 
-@router.get(
-    "/health",
-    response_model=HealthCheck,
-    summary="Health check endpoint",
-    description="Returns the current operational status of the Delco Chefs API."
-)
-def get_health() -> HealthCheck:
-    return HealthCheck(
-        status="healthy",
-        app=settings.PROJECT_NAME,
-        version=settings.VERSION,
-        environment=settings.ENVIRONMENT,
-    )
+def health_payload() -> JSONResponse:
+    ok, revision = check_database()
+    body = {"status": "healthy" if ok else "unhealthy", "database": "ok" if ok else "unreachable", "migration": revision,
+            "app": settings.PROJECT_NAME, "version": settings.VERSION, "environment": settings.ENVIRONMENT}
+    return JSONResponse(body, status_code=200 if ok else 503)
+
+
+def version_payload() -> dict:
+    return {"version": settings.VERSION, "commit": settings.GIT_COMMIT, "environment": settings.ENVIRONMENT}
+
+
+@router.get("/health", summary="Checks PostgreSQL connectivity and the applied migration")
+def health():
+    return health_payload()
+
+
+@router.get("/version", summary="Deployed version and commit")
+def version():
+    return version_payload()

@@ -16,6 +16,7 @@ export interface User {
 export interface Session {
   user: User;
   token: string;
+  expiresIn?: number;
   /** Customer: has finished profile/address/consent onboarding. */
   onboarded?: boolean;
   /** Chef: application status; only `approved` chefs get the main app. */
@@ -54,6 +55,9 @@ export type BookableService = Extract<ServiceType, 'monthly_subscription' | 'cus
 
 export interface ServiceOffering {
   type: ServiceType;
+  group?: 'subscription' | 'one_time';
+  /** Signed-in customer's trial status for this service. */
+  eligibility?: import('../services/booking.service').ServiceEligibility;
   name: string;
   tagline: string;
   description: string;
@@ -69,10 +73,16 @@ export type MealType = 'breakfast' | 'lunch' | 'dinner';
 export interface BookingRequirements {
   members: number;
   meals: MealType[];
-  slot: string; // e.g. "07:00-09:00"
+  /** morning | evening | both — slot times come from server settings. */
+  slot: string;
+  slotLabel?: string;
   startDate: string;
-  /** Custom Time only: number of days. */
+  endDate?: string;
+  /** Custom Time only: number of days (both ends count, 7–90). */
   durationDays?: number;
+  /** Custom Time only: Monday = 0 … Sunday = 6. */
+  weekdays?: number[];
+  hasAllergies?: boolean;
   cuisines: string[];
   diet: DietType;
   dietaryNotes?: string;
@@ -99,6 +109,11 @@ export interface ServiceRequest {
   customerPhone: string;
   service: BookableService;
   status: RequestStatus;
+  /** Admin board column. */
+  stage?: string;
+  /** Admin: assigned chef has an off-day on an assigned visit. */
+  conflict?: boolean;
+  closedReason?: string;
   /** Open requests block a new request for the same service. */
   isOpen: boolean;
   requirements: BookingRequirements;
@@ -126,6 +141,10 @@ export interface Trial {
   visitId?: string;
   decision?: TrialDecision;
   decidedAt?: string;
+  /** Exactly the choices the server will accept for this trial. */
+  allowedDecisions?: TrialDecision[];
+  counted?: boolean;
+  pushed?: boolean;
 }
 
 export type SubscriptionStatus = 'pending_payment' | 'active' | 'paused' | 'completed' | 'cancelled';
@@ -143,6 +162,10 @@ export interface Subscription {
   members: number;
   amount: number;
   offDays: string[];
+  missedDays?: string[];
+  /** Monthly only: flexible off-days still free in this cycle. */
+  freeOffDaysLeft?: number | null;
+  plannedVisits?: number;
   paymentId?: string;
 }
 
@@ -160,6 +183,9 @@ export interface BookingSummary {
 // ---------- Visits & tracking ----------
 
 export type VisitStatus =
+  | 'pending_assignment'
+  | 'missed'
+  | 'cancelled'
   | 'scheduled'
   | 'chef_travelling'
   | 'arrived'
@@ -181,8 +207,14 @@ export interface Visit {
   customerName: string;
   customerPhone: string;
   address: Address;
-  /** Four-digit code customer shares with chef at the door. */
-  checkInCode: string;
+  /** Four-digit code customer shares with chef at the door (customer view only, until used). */
+  checkInCode?: string | null;
+  startsAt?: string;
+  endsAt?: string;
+  allergyNotes?: string;
+  /** Chef view: full address/phone only from 2h before to 2h after the visit. */
+  addressRevealed?: boolean;
+  codeLocked?: boolean;
   members: number;
   meals: MealType[];
   diet: DietType;
@@ -196,10 +228,15 @@ export interface Visit {
 export interface TrackingSnapshot {
   visitId: string;
   available: boolean;
+  /** Server refusal code when unavailable: TRACKING_NOT_AVAILABLE_YET | TRACKING_NOT_STARTED | TRACKING_ENDED. */
+  code?: string;
+  /** No update for longer than the stale threshold → show "Reconnecting…". */
+  stale?: boolean;
+  pollIntervalSec?: number;
   /** Why tracking is unavailable (chef not travelling, permission off…). */
   reason?: string;
   chefLocation?: LatLng;
-  destination: LatLng;
+  destination?: LatLng;
   etaMinutes?: number;
   distanceKm?: number;
   updatedAt: string;
@@ -207,7 +244,7 @@ export interface TrackingSnapshot {
 
 // ---------- Payments ----------
 
-export type PaymentStatus = 'link_created' | 'pending' | 'paid' | 'failed' | 'expired';
+export type PaymentStatus = 'link_created' | 'pending' | 'paid' | 'failed' | 'expired' | 'refunded' | 'partially_refunded';
 
 export interface Payment {
   id: string;
@@ -224,6 +261,11 @@ export interface Payment {
   method?: string;
   reference?: string;
   attempts: number;
+  amountPaise?: number;
+  linkStatus?: 'active' | 'paid' | 'expired' | 'replaced' | 'cancelled' | null;
+  gatewayStatus?: 'CREATED' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
+  refundedAmount?: number;
+  failureReason?: string;
 }
 
 // ---------- Chefs ----------
@@ -281,6 +323,8 @@ export interface Assignment {
   date: string;
   slot: string;
   status: AssignmentStatus;
+  allergyNotes?: string;
+  respondBy?: string;
   distanceKm: number;
   members: number;
   meals: MealType[];
@@ -307,10 +351,13 @@ export interface ChefSuggestion {
   cuisines: string[];
   distanceKm: number;
   activeJobs: number;
+  /** Points out of 100 for display; `rawScore` is the 0–1 ranking score. */
   score: number;
+  rawScore?: number;
   eligible: boolean;
   /** Exclusion reasons when not eligible. */
   reasons: string[];
+  /** Weighted score parts (they add up to `score`): rating + distance + workload. */
   breakdown: { distance: number; rating: number; workload: number; cuisine: number };
 }
 

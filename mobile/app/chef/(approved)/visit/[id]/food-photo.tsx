@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
-import { Button, Notice, PhotoCapture, Screen } from '../../../../../src/components';
+import { Button, Notice, PhotoCapture, Screen, type CapturedPhoto } from '../../../../../src/components';
 import { useCheckoutProgress } from '../../../../../src/features/chef';
 import { visitService } from '../../../../../src/services';
 
@@ -9,11 +9,11 @@ import { visitService } from '../../../../../src/services';
 export default function ChefFoodPhoto() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const mark = useCheckoutProgress((s) => s.mark);
-  const [captured, setCaptured] = useState(false);
+  const [captured, setCaptured] = useState<CapturedPhoto | null>(null);
   const save = useMutation({
-    mutationFn: () => visitService.uploadPhoto(id, 'food'),
-    onSuccess: () => {
-      mark(id, 'food');
+    mutationFn: () => visitService.uploadPhoto(id, 'food', captured!.uri, captured!.mimeType),
+    onSuccess: (p) => {
+      mark(id, 'food', p.id);
       router.back();
     },
   });
@@ -21,7 +21,7 @@ export default function ChefFoodPhoto() {
     <Screen eyebrow="Check out" title="Food photo" subtitle="Plate or arrange the dishes so they’re all visible." footer={
       <Button title="Save photo" disabled={!captured} loading={save.isPending} onPress={() => save.mutate()} />
     }>
-      <PhotoCapture label="Photograph today’s dishes" icon="fast-food-outline" captured={captured} onCapture={() => setCaptured(true)} />
+      <PhotoCapture label="Photograph today’s dishes" icon="fast-food-outline" captured={captured} onCapture={setCaptured} />
       {save.isError && <Notice tone="error">{save.error.message}</Notice>}
     </Screen>
   );

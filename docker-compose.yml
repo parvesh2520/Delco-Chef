@@ -1,0 +1,31 @@
+# Local stack: PostgreSQL + API. `docker compose up --build`, then seed with
+#   docker compose exec api python -m scripts.seed
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: delco
+      POSTGRES_PASSWORD: delco
+      POSTGRES_DB: delco
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U delco"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql://delco:delco@db:5432/delco
+      DIRECT_URL: postgresql://delco:delco@db:5432/delco
+      PUBLIC_BASE_URL: http://localhost:8000
+    ports: ["8000:8000"]
+    volumes: [media:/app/media]
+
+volumes:
+  pgdata:
+  media:

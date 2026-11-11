@@ -59,6 +59,10 @@ htmlcov/
 .env.*.local
 !.env.example
 
+# Uploaded media, exports and test artefacts
+backend/media/
+backend/tests/.media/
+
 # IDE & OS
 .vscode/
 .idea/
@@ -67,3 +71,6 @@ htmlcov/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Server logs
+backend/*.log

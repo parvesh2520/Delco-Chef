@@ -6,8 +6,8 @@ export const APP_CONFIG = {
   version: '1.0.0',
   apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000/api/v1',
   environment: process.env.EXPO_PUBLIC_APP_ENV || 'development',
-  /** All service calls return mock data until the FastAPI endpoints exist. */
-  useMocks: process.env.EXPO_PUBLIC_USE_MOCKS !== 'false',
+  /** Google Maps via react-native-maps. Requires GOOGLE_MAPS_API_KEY at build time (app.config.js). */
+  mapsEnabled: process.env.EXPO_PUBLIC_MAPS_ENABLED !== 'false',
 } as const;
 
 export const USER_ROLES = {
@@ -54,14 +54,8 @@ export const CUISINES = ['North Indian', 'South Indian', 'Bengali', 'Gujarati', 
 
 export const COMMON_ALLERGENS = ['Peanuts', 'Tree nuts', 'Dairy', 'Gluten', 'Eggs', 'Soy', 'Shellfish', 'Sesame'];
 
-export const SLOTS = ['07:00-09:00', '09:00-11:00', '12:00-14:00', '17:00-19:00', '19:00-21:00'];
-
-/** Mock-only credentials shown on login screens. Remove with real auth. */
-export const MOCK_AUTH = {
-  otp: '123456',
-  customerExisting: '9876543210',
-  chefApproved: '9111111111',
-  chefRejected: '9111111112',
-  opsAdmin: '9000000001',
-  superAdmin: '9000000002',
-} as const;
+/** Weekday chips for Custom Time (numbering used by the API: Monday = 0). */
+export const WEEKDAYS = [
+  { value: '0', label: 'Mon' }, { value: '1', label: 'Tue' }, { value: '2', label: 'Wed' }, { value: '3', label: 'Thu' },
+  { value: '4', label: 'Fri' }, { value: '5', label: 'Sat' }, { value: '6', label: 'Sun' },
+];

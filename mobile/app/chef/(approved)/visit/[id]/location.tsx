@@ -1,21 +1,28 @@
 import React from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, MockTag, Notice, Screen, StatusHero } from '../../../../../src/components';
+import { Button, Notice, Screen, StatusHero } from '../../../../../src/components';
 import { useChefId } from '../../../../../src/features/chef';
+import { currentPosition, LocationDeniedError } from '../../../../../src/features/tracking';
 import { visitService } from '../../../../../src/services';
 
-/** Location permission handling before travel starts. Permission prompt is simulated. */
+/** Asks the OS for location permission, then starts travel on the server. */
 export default function ChefLocationPermission() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const chefId = useChefId();
   const qc = useQueryClient();
   const start = useMutation({
-    mutationFn: () => visitService.startTravel(id),
+    mutationFn: async () => {
+      await currentPosition(); // triggers the OS permission prompt
+      return visitService.startTravel(id);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['visit', id] });
       qc.invalidateQueries({ queryKey: ['chefVisits', chefId] });
       router.replace(`/chef/visit/${id}/travelling`);
+    },
+    onError: (e) => {
+      if (e instanceof LocationDeniedError) router.push({ pathname: '/permission-denied', params: { kind: 'location' } });
     },
   });
   return (
@@ -30,7 +37,6 @@ export default function ChefLocationPermission() {
       <StatusHero tone="info" icon="location-outline" title="Share your location" message="Delco uses your location while you travel so the customer can see your ETA, and to confirm you’re at the address at check-in." />
       <Notice>Location is only shared from start of travel until check-out.</Notice>
       {start.isError && <Notice tone="error">{start.error.message}</Notice>}
-      <MockTag>OS permission prompt pending (expo-location)</MockTag>
     </Screen>
   );
 }

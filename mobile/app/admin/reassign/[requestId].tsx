@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Card, ChipGroup, InfoRow, Screen, TextField, Txt } from '../../../src/components';
 import { QueryView } from '../../../src/components';
-import { bookingService } from '../../../src/services';
+import { adminService } from '../../../src/services';
 
 const QUICK = ['Chef declined', 'Chef unavailable', 'Customer feedback', 'Schedule change'];
 
@@ -12,7 +12,7 @@ export default function Reassign() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
-  const query = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => bookingService.getRequest(requestId) });
+  const query = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => adminService.getRequest(requestId) });
   const valid = reason.trim().length >= 5;
   return (
     <Screen

@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import MapView, { Marker } from 'react-native-maps';
+import { APP_CONFIG } from '../constants';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../theme';
 import { toDateKey } from '../utils';
@@ -8,10 +11,28 @@ import { Button } from './Button';
 import { Txt } from './Txt';
 
 /**
- * Stylised map placeholder. A real map (react-native-maps + Google Maps API key) is a
- * pending integration; this shows pins in relative positions so layouts are final.
+ * Google map with destination + chef markers (react-native-maps). When maps are disabled for a build
+ * (EXPO_PUBLIC_MAPS_ENABLED=false, e.g. no API key yet) it falls back to a stylised relative-position view.
  */
 export function MapPreview({ destination, chef, height = 220, label }: { destination?: LatLng; chef?: LatLng; height?: number; label?: string }) {
+  if (APP_CONFIG.mapsEnabled && destination) {
+    const lats = [destination.lat, ...(chef ? [chef.lat] : [])];
+    const lngs = [destination.lng, ...(chef ? [chef.lng] : [])];
+    const region = {
+      latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
+      longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      latitudeDelta: Math.max(0.01, (Math.max(...lats) - Math.min(...lats)) * 1.8),
+      longitudeDelta: Math.max(0.01, (Math.max(...lngs) - Math.min(...lngs)) * 1.8),
+    };
+    return (
+      <View style={[styles.map, { height }]} accessibilityLabel={label ?? 'Map'}>
+        <MapView style={StyleSheet.absoluteFill} region={region} toolbarEnabled={false}>
+          <Marker coordinate={{ latitude: destination.lat, longitude: destination.lng }} title="Home" pinColor={colors.primary} />
+          {chef && <Marker coordinate={{ latitude: chef.lat, longitude: chef.lng }} title="Your chef" pinColor={colors.accent} />}
+        </MapView>
+      </View>
+    );
+  }
   const pos = (p: LatLng) => {
     if (!destination) return { left: '50%', top: '50%' } as const;
     const dx = (p.lng - destination.lng) * 1800;
@@ -32,23 +53,53 @@ export function MapPreview({ destination, chef, height = 220, label }: { destina
           <Ionicons name="bicycle" size={18} color={colors.primary} />
         </View>
       )}
-      <View style={styles.mapTag}>
-        <Txt variant="caption" color={colors.purple}>Map preview · live map pending</Txt>
-      </View>
     </View>
   );
 }
 
-/** Camera placeholder: shows a frame and simulates capture. Real capture uses expo-camera / expo-image-picker. */
-export function PhotoCapture({ label, captured, onCapture, icon = 'camera-outline' }: { label: string; captured: boolean; onCapture: () => void; icon?: keyof typeof Ionicons.glyphMap }) {
+export interface CapturedPhoto {
+  uri: string;
+  mimeType: string;
+}
+
+/** Opens the device camera (expo-image-picker). Gallery picking is not offered for attendance photos. */
+export async function takePhoto(front = false): Promise<CapturedPhoto | null> {
+  const perm = await ImagePicker.requestCameraPermissionsAsync();
+  if (!perm.granted) throw new Error('Camera permission is needed. Allow it in Settings and try again.');
+  const res = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'], quality: 0.6, exif: false, cameraType: front ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+  });
+  if (res.canceled || !res.assets?.[0]) return null;
+  const a = res.assets[0];
+  return { uri: a.uri, mimeType: a.mimeType === 'image/png' ? 'image/png' : 'image/jpeg' };
+}
+
+/** Camera capture with preview. `onCapture` receives the photo; the screen uploads it to the API. */
+export function PhotoCapture({ label, captured, onCapture, icon = 'camera-outline', front = false }: { label: string; captured: CapturedPhoto | null; onCapture: (p: CapturedPhoto) => void; icon?: keyof typeof Ionicons.glyphMap; front?: boolean }) {
+  const [error, setError] = useState<string | null>(null);
+  const capture = async () => {
+    setError(null);
+    try {
+      const p = await takePhoto(front);
+      if (p) onCapture(p);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   return (
     <View style={{ gap: spacing.md }}>
-      <View style={[styles.frame, captured && { borderColor: colors.success, backgroundColor: colors.successLight }]}>
-        <Ionicons name={captured ? 'checkmark-circle' : icon} size={64} color={captured ? colors.success : colors.purple} />
-        <Txt variant="bodyStrong" center>{captured ? 'Photo captured' : label}</Txt>
-        <Txt variant="caption" center>Camera integration pending — capture is simulated.</Txt>
+      <View style={[styles.frame, captured && { borderColor: colors.success, backgroundColor: colors.successLight, padding: 0, overflow: 'hidden' }]}>
+        {captured ? (
+          <Image source={{ uri: captured.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Captured photo" />
+        ) : (
+          <>
+            <Ionicons name={icon} size={64} color={colors.purple} />
+            <Txt variant="bodyStrong" center>{label}</Txt>
+          </>
+        )}
       </View>
-      <Button title={captured ? 'Retake' : 'Capture photo'} icon="camera" variant={captured ? 'secondary' : 'accent'} onPress={onCapture} />
+      {error && <Txt variant="small" color={colors.error}>{error}</Txt>}
+      <Button title={captured ? 'Retake' : 'Capture photo'} icon="camera" variant={captured ? 'secondary' : 'accent'} onPress={capture} />
     </View>
   );
 }
@@ -102,7 +153,6 @@ const styles = StyleSheet.create({
   road: { position: 'absolute', backgroundColor: '#FFFFFF', opacity: 0.8 },
   pin: { position: 'absolute', width: 36, height: 36, borderRadius: 18, marginLeft: -18, marginTop: -18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FFFFFF' },
   chefPin: { backgroundColor: colors.accent },
-  mapTag: { position: 'absolute', bottom: 8, left: 8, backgroundColor: colors.card, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
   frame: { height: 280, borderRadius: radius.xl, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.purple, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center', gap: 8, padding: spacing.md },
   cal: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
   calHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },

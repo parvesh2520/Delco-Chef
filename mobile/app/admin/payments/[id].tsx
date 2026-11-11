@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, ConfirmDialog, InfoRow, MockTag, Notice, Screen, Txt } from '../../../src/components';
+import { Badge, Button, Card, ConfirmDialog, InfoRow, Notice, Screen, Txt } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
 import { Row, useAdminInvalidate } from '../../../src/features/admin';
 import { QueryView } from '../../../src/components';
@@ -58,7 +58,6 @@ export default function PaymentDetails() {
                 <Button title="Regenerate link" icon="refresh-outline" onPress={() => setAction('regenerate')} />
               </>
             )}
-            <MockTag>No real payment gateway — status changes are simulated</MockTag>
           </>
         )}
       </QueryView>

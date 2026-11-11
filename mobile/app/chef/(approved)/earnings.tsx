@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Card, MockTag, QueryView, Screen, Section, StatTile, Txt } from '../../../src/components';
+import { Badge, Card, QueryView, Screen, Section, StatTile, Txt } from '../../../src/components';
 import { chefService } from '../../../src/services';
 import { formatCurrency, formatDate } from '../../../src/utils';
 
@@ -37,7 +37,6 @@ export default function ChefEarnings() {
                 ))
               )}
             </Section>
-            <MockTag />
           </>
         )}
       </QueryView>

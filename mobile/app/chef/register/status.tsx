@@ -1,8 +1,10 @@
 import React from 'react';
 import { Redirect, router } from 'expo-router';
-import { Button, MockTag, Notice, Screen, StatusHero } from '../../../src/components';
+import { useQuery } from '@tanstack/react-query';
+import { Button, Notice, Screen, StatusHero } from '../../../src/components';
 import { useSignOut } from '../../../src/features/authentication';
 import { useSession } from '../../../src/navigation';
+import { authService, chefService } from '../../../src/services';
 import { useAuthStore } from '../../../src/store';
 
 /** Application approval / rejection status. */
@@ -10,7 +12,12 @@ export default function ChefApplicationStatus() {
   const session = useSession();
   const setChefStatus = useAuthStore((s) => s.setChefStatus);
   const signOut = useSignOut();
-  const status = session?.chefStatus ?? 'draft';
+  // Poll the server: approval is made by a Super Admin, never in the app.
+  const me = useQuery({ queryKey: ['chefMe'], queryFn: () => chefService.getMe(), refetchInterval: 30000 });
+  React.useEffect(() => {
+    if (me.data && me.data.status !== session?.chefStatus) authService.reloadSession().catch(() => undefined);
+  }, [me.data, session?.chefStatus]);
+  const status = me.data?.status ?? session?.chefStatus ?? 'draft';
   if (status === 'draft') return <Redirect href="/chef/register" />;
 
   if (status === 'approved') {
@@ -27,7 +34,7 @@ export default function ChefApplicationStatus() {
     return (
       <Screen back={false}>
         <StatusHero tone="error" icon="close-circle-outline" title="Application not approved" message="We couldn’t approve your application this time." />
-        <Notice tone="error">Reason: Police verification certificate could not be validated. Please upload a clear, current copy.</Notice>
+        <Notice tone="error">Reason: {me.data?.rejectionReason ?? 'Not provided'}</Notice>
         <Button
           title="Update & reapply"
           onPress={() => {
@@ -49,8 +56,7 @@ export default function ChefApplicationStatus() {
         message="We’re verifying your documents. We’ll notify you as soon as there’s an update."
       />
       <Notice>Only approved chefs can receive assignments.</Notice>
-      <Button title="Simulate approval" variant="secondary" icon="flask-outline" onPress={() => setChefStatus('approved')} />
-      <MockTag>Approval is done by a Super Admin in the real flow</MockTag>
+      <Button title="Check status" variant="secondary" icon="refresh" loading={me.isFetching} onPress={() => me.refetch()} />
       <Button title="Sign out" variant="ghost" onPress={signOut} />
     </Screen>
   );

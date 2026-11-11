@@ -13,7 +13,9 @@ export default function CheckInCode() {
   return (
     <Screen eyebrow="Check-in" title="Your visit code" subtitle="Share this code with your chef when they arrive.">
       <QueryView query={query} empty={{ title: 'Visit not found' }}>
-        {(v) => (
+        {(v) => !v.checkInCode ? (
+          <Notice icon="checkmark-circle-outline">{v.status === 'pending_assignment' ? 'Your code appears once a chef is assigned.' : 'Your chef has checked in. The code has been used.'}</Notice>
+        ) : (
           <>
             <View style={styles.row} accessibilityLabel={`Check-in code ${v.checkInCode.split('').join(' ')}`}>
               {v.checkInCode.split('').map((d, i) => (

@@ -1,0 +1,23 @@
+Limit  (cost=3.46..17.77 rows=6 width=2170) (actual time=0.069..0.070 rows=6 loops=1)
+  Buffers: shared hit=7
+  InitPlan 2
+    ->  Result  (cost=0.34..0.35 rows=1 width=8) (actual time=0.028..0.028 rows=1 loops=1)
+          Buffers: shared hit=3
+          InitPlan 1
+            ->  Limit  (cost=0.29..0.34 rows=1 width=8) (actual time=0.027..0.027 rows=1 loops=1)
+                  Buffers: shared hit=3
+                  ->  Index Scan using pk_users on users  (cost=0.29..574.05 rows=10001 width=8) (actual time=0.027..0.027 rows=1 loops=1)
+                        Filter: ((role)::text = 'customer'::text)
+                        Buffers: shared hit=3
+  ->  Incremental Sort  (cost=3.11..17.41 rows=6 width=2170) (actual time=0.069..0.069 rows=6 loops=1)
+        Sort Key: service_requests.created_at DESC, service_requests.id DESC
+        Presorted Key: service_requests.created_at
+        Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 26kB  Peak Memory: 26kB
+        Buffers: shared hit=7
+        ->  Index Scan Backward using ix_requests_customer_created on service_requests  (cost=0.29..17.14 rows=6 width=2170) (actual time=0.058..0.059 rows=6 loops=1)
+              Index Cond: (customer_id = (InitPlan 2).col1)
+              Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=47
+Planning Time: 0.234 ms
+Execution Time: 0.122 ms

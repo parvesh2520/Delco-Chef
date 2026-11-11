@@ -15,11 +15,12 @@ export const usePickedLocation = create<{ picked: LatLng | null; setPicked: (p: 
   setPicked: (picked) => set({ picked }),
 }));
 
-export const NOIDA_CENTRE: LatLng = { lat: 28.5355, lng: 77.391 };
+/** Initial map centre before the customer drops a pin (service city: Bengaluru). */
+export const DEFAULT_CENTRE: LatLng = { lat: 12.9716, lng: 77.5946 };
 
 type Draft = Omit<Address, 'id'> & { id?: string };
 
-const EMPTY: Draft = { label: 'Home', line1: '', line2: '', city: 'Noida', pincode: '', isDefault: false, ...NOIDA_CENTRE };
+const EMPTY: Draft = { label: 'Home', line1: '', line2: '', city: 'Bengaluru', pincode: '', isDefault: false, ...DEFAULT_CENTRE };
 
 /** Add/edit address form shared by onboarding and Manage addresses. */
 export function AddressForm({ id, submitLabel = 'Save address', onSaved }: { id?: string; submitLabel?: string; onSaved: (a: Address) => void }) {

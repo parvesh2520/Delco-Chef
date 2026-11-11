@@ -1,47 +1,66 @@
-// Visits, live tracking and chef visit actions. MOCK — no GPS, camera upload or websocket.
-// Target endpoints: GET /visits, GET /visits/{id}/tracking, POST /visits/{id}/start-travel|check-in|check-out|photos
-import type { TrackingSnapshot, Visit, VisitStatus } from '../types';
-import { db, mock, mockError } from './mock';
+// Visits, live tracking, chef visit actions (travel, GPS, photos, check-in/out). All validated server-side.
+import type { TrackingSnapshot, Visit } from '../types';
+import { ApiError, api } from './api';
 
-const setStatus = (id: string, status: VisitStatus, patch: Partial<Visit> = {}) => {
-  const v = db.visits.find((x) => x.id === id);
-  if (!v) return mockError('Visit not found');
-  Object.assign(v, { status, ...patch });
-  return mock(v);
-};
+export interface Position {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  deviceId?: string;
+}
+
+export interface AttendanceResult {
+  id: string;
+  visitId: string;
+  checkInAt?: string;
+  checkOutAt?: string;
+  workedMinutes?: number;
+  status: string;
+  exception?: string;
+}
+
+const TRACKING_CODES = ['TRACKING_NOT_AVAILABLE_YET', 'TRACKING_NOT_STARTED', 'TRACKING_ENDED'];
 
 export const visitService = {
-  listCustomerVisits: () => mock(db.visits.filter((v) => v.customerName === db.customerProfile.fullName)),
-  listChefVisits: (chefId: string) => mock(db.visits.filter((v) => v.chefId === chefId)),
-  get: (id: string) => mock(db.visits.find((v) => v.id === id) ?? null),
+  // No optional params: these are passed directly as TanStack `queryFn`s.
+  listCustomerVisits: () => api.get<Visit[]>('/visits', { scope: 'all' }),
+  listChefVisits: (_chefId?: string) => api.get<Visit[]>('/visits', { scope: 'all' }),
+  get: (id: string) => api.get<Visit>(`/visits/${id}`),
+  getCustomerContact: (id: string) =>
+    api.get<{ name: string; phone: string; address: Visit['address'] }>(`/visits/${id}/customer`),
 
-  getTracking: (id: string): Promise<TrackingSnapshot | null> => {
-    const v = db.visits.find((x) => x.id === id);
-    if (!v) return mock(null);
-    const travelling = v.status === 'chef_travelling';
-    return mock({
-      visitId: id,
-      available: travelling,
-      reason: travelling ? undefined : v.status === 'scheduled' ? 'Your chef hasn’t started travelling yet.' : 'Tracking ends once the chef arrives.',
-      chefLocation: travelling ? { lat: v.address.lat + 0.012, lng: v.address.lng - 0.009 } : undefined,
-      destination: { lat: v.address.lat, lng: v.address.lng },
-      etaMinutes: travelling ? 14 : undefined,
-      distanceKm: travelling ? 2.3 : undefined,
-      updatedAt: new Date().toISOString(),
-    });
+  /** Window/ended refusals come back as an unavailable snapshot so the map screen can explain why. */
+  getTracking: async (id: string): Promise<TrackingSnapshot | null> => {
+    try {
+      return await api.get<TrackingSnapshot>(`/visits/${id}/tracking`);
+    } catch (e) {
+      if (e instanceof ApiError && TRACKING_CODES.includes(e.code)) {
+        return { visitId: id, available: false, reason: e.message, code: e.code, updatedAt: new Date().toISOString() };
+      }
+      throw e;
+    }
   },
 
-  startTravel: (id: string) => setStatus(id, 'chef_travelling'),
-  markArrived: (id: string) => setStatus(id, 'arrived'),
-  verifyCheckInCode: (id: string, code: string) => {
-    const v = db.visits.find((x) => x.id === id);
-    if (!v) return mockError('Visit not found');
-    if (v.checkInCode !== code) return mockError('Code does not match. Ask the customer to check the app.');
-    return mock(true);
+  startTravel: (id: string) => api.post<Visit>(`/visits/${id}/travel/start`),
+  stopTravel: (id: string) => api.post<Visit>(`/visits/${id}/travel/stop`),
+  sendLocations: (id: string, points: { lat: number; lng: number; accuracy?: number; recordedAt: string }[]) =>
+    api.post<{ accepted: number }>(`/visits/${id}/location`, { points }),
+  /** Arrival is confirmed by a successful geofenced check-in; this simply stops location sharing. */
+  markArrived: (id: string) => api.post<Visit>(`/visits/${id}/travel/stop`),
+
+  verifyCheckInCode: (id: string, code: string) => api.post<{ valid: boolean }>(`/visits/${id}/check-in/verify-code`, { code }),
+
+  uploadPhoto: (id: string, kind: 'check_in_selfie' | 'check_out_selfie' | 'food', uri: string, mimeType = 'image/jpeg') => {
+    const form = new FormData();
+    form.append('kind', kind);
+    form.append('file', { uri, name: `${kind}.${mimeType === 'image/png' ? 'png' : 'jpg'}`, type: mimeType } as unknown as Blob);
+    return api.upload<{ id: string; kind: string }>(`/visits/${id}/photos`, form);
   },
-  /** Selfie / food photo are captured UI-side only; upload is a backend integration. */
-  uploadPhoto: (_id: string, _kind: 'check_in_selfie' | 'check_out_selfie' | 'food') => mock(true, 600),
-  checkIn: (id: string) => setStatus(id, 'cooking', { checkInAt: new Date().toISOString() }),
-  checkOut: (id: string) => setStatus(id, 'completed', { checkOutAt: new Date().toISOString() }),
-  markCustomerUnavailable: (id: string, _note: string) => setStatus(id, 'customer_unavailable'),
+
+  checkIn: (id: string, body: Position & { code: string; selfiePhotoId: string }) =>
+    api.post<AttendanceResult>(`/visits/${id}/check-in`, body),
+  checkOut: (id: string, body: Partial<Position> & { selfiePhotoId: string; foodPhotoId: string }) =>
+    api.post<AttendanceResult>(`/visits/${id}/check-out`, body),
+  markCustomerUnavailable: (id: string, note: string, pos?: Partial<Position>) =>
+    api.post<AttendanceResult>(`/visits/${id}/customer-unavailable`, { note, ...pos }),
 };

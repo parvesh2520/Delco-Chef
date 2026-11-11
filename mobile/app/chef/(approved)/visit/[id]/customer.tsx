@@ -3,11 +3,15 @@ import { Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Avatar, Button, Card, InfoRow, Screen, Section, Txt } from '../../../../../src/components';
 import { DIET_LABELS } from '../../../../../src/constants';
+import { useQuery } from '@tanstack/react-query';
 import { AllergyNotice, mealsText, VisitGate } from '../../../../../src/features/chef';
+import { visitService } from '../../../../../src/services';
 
 /** Customer visit information at the door. */
 export default function ChefVisitCustomer() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // Address & phone are released by the server only from 2 h before to 2 h after the visit.
+  const contact = useQuery({ queryKey: ['visitContact', id], queryFn: () => visitService.getCustomerContact(id), retry: false });
   return (
     <VisitGate id={id}>
       {(v) => (
@@ -20,8 +24,14 @@ export default function ChefVisitCustomer() {
           <Card tone="cream">
             <Avatar name={v.customerName} />
             <Txt variant="h2">{v.customerName}</Txt>
-            <InfoRow icon="location-outline" label="Address" value={`${v.address.line1}${v.address.line2 ? `, ${v.address.line2}` : ''}, ${v.address.city} ${v.address.pincode}`} />
-            <Button title={`Call ${v.customerName.split(' ')[0]}`} variant="secondary" small icon="call-outline" onPress={() => Linking.openURL(`tel:${v.customerPhone}`)} />
+            {contact.data ? (
+              <>
+                <InfoRow icon="location-outline" label="Address" value={`${contact.data.address.line1}${contact.data.address.line2 ? `, ${contact.data.address.line2}` : ''}, ${contact.data.address.city} ${contact.data.address.pincode}`} />
+                <Button title={`Call ${v.customerName.split(' ')[0]}`} variant="secondary" small icon="call-outline" onPress={() => Linking.openURL(`tel:${contact.data.phone}`)} />
+              </>
+            ) : (
+              <Txt variant="small">{contact.isLoading ? 'Loading contact…' : contact.error?.message}</Txt>
+            )}
           </Card>
           <AllergyNotice allergies={v.allergies} />
           <Card>

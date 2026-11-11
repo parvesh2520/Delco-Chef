@@ -86,14 +86,15 @@ export const timeOrDash = (iso?: string) => (iso ? formatTime(iso) : '—');
 
 // ---- Check-out checklist progress (per visit, this session only) ----
 interface CheckoutState {
-  byVisit: Record<string, { food: boolean; selfie: boolean }>;
-  mark: (visitId: string, key: 'food' | 'selfie') => void;
+  /** Uploaded photo IDs (and the verified check-in code) for the visit in progress. */
+  byVisit: Record<string, { food?: string; selfie?: string; code?: string }>;
+  mark: (visitId: string, key: 'food' | 'selfie' | 'code', value: string) => void;
   reset: (visitId: string) => void;
 }
 
 export const useCheckoutProgress = create<CheckoutState>((set) => ({
   byVisit: {},
-  mark: (id, key) => set((s) => ({ byVisit: { ...s.byVisit, [id]: { ...(s.byVisit[id] ?? { food: false, selfie: false }), [key]: true } } })),
+  mark: (id, key, value) => set((s) => ({ byVisit: { ...s.byVisit, [id]: { ...(s.byVisit[id] ?? {}), [key]: value } } })),
   reset: (id) => set((s) => {
     const { [id]: _, ...rest } = s.byVisit;
     return { byVisit: rest };

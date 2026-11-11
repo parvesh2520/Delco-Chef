@@ -5,21 +5,21 @@ import { Button, Card, InfoRow, Notice, Screen } from '../../../../src/component
 import { SERVICE_LABELS } from '../../../../src/constants';
 import { useAdminInvalidate } from '../../../../src/features/admin';
 import { QueryView } from '../../../../src/components';
-import { adminService, bookingService } from '../../../../src/services';
+import { adminService } from '../../../../src/services';
 import { useToast } from '../../../../src/store';
 
 /** Final confirmation before assigning / reassigning a chef. */
 export default function ConfirmAssignment() {
-  const { requestId, chefId, reason } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string }>();
+  const { requestId, chefId, reason, push, date } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string; push?: string; date?: string }>();
   const invalidate = useAdminInvalidate();
-  const request = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => bookingService.getRequest(requestId) });
-  const suggestions = useQuery({ queryKey: ['admin', 'suggestions', requestId], queryFn: () => adminService.getSuggestions(requestId) });
+  const request = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => adminService.getRequest(requestId) });
+  const suggestions = useQuery({ queryKey: ['admin', 'suggestions', requestId, push ? date : ''], queryFn: () => adminService.getSuggestions(requestId, push ? date : undefined) });
   const chef = suggestions.data?.find((s) => s.chefId === chefId);
   const assign = useMutation({
-    mutationFn: () => adminService.assignChef(requestId, chefId, reason),
+    mutationFn: () => (push && date ? adminService.pushSecondTrial(requestId, chefId, date) : adminService.assignChef(requestId, chefId, reason)),
     onSuccess: async () => {
       await invalidate();
-      useToast.getState().show(reason ? 'Chef reassigned' : 'Chef assigned');
+      useToast.getState().show(push ? 'Second trial pushed — customer notified' : reason ? 'Chef reassigned' : 'Chef assigned');
       router.dismissTo(`/admin/request/${requestId}`);
     },
   });
@@ -34,7 +34,8 @@ export default function ConfirmAssignment() {
           <Card>
             <InfoRow label="Customer" value={r.customerName} icon="person-outline" />
             <InfoRow label="Service" value={SERVICE_LABELS[r.service]} icon="restaurant-outline" />
-            <InfoRow label="Slot" value={r.requirements.slot} icon="time-outline" />
+            <InfoRow label="Slot" value={r.requirements.slotLabel ?? r.requirements.slot} icon="time-outline" />
+            {push && <InfoRow label="Trial 2 date" value={date} icon="calendar-outline" />}
             <InfoRow label="Current chef" value={r.assignedChefName ?? 'None'} icon="swap-horizontal-outline" />
             <InfoRow label="New chef" value={chef ? `${chef.chefName} · score ${chef.score}` : '—'} icon="checkmark-circle-outline" />
             {reason && <InfoRow label="Reason" value={reason} icon="chatbox-ellipses-outline" />}

@@ -1,0 +1,16 @@
+Limit  (cost=0.82..23.44 rows=51 width=2170) (actual time=0.102..0.123 rows=51 loops=1)
+  Buffers: shared hit=41
+  ->  Incremental Sort  (cost=0.82..8020.15 rows=18084 width=2170) (actual time=0.101..0.120 rows=51 loops=1)
+        Sort Key: created_at DESC, id DESC
+        Presorted Key: created_at
+        Full-sort Groups: 2  Sort Method: quicksort  Average Memory: 33kB  Peak Memory: 33kB
+        Buffers: shared hit=41
+        ->  Index Scan Backward using ix_requests_stage_created on service_requests  (cost=0.41..7206.37 rows=18084 width=2170) (actual time=0.019..0.055 rows=52 loops=1)
+              Index Cond: ((stage)::text = 'closed'::text)
+              Filter: ((service)::text = 'custom_time'::text)
+              Rows Removed by Filter: 51
+              Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=218
+Planning Time: 0.700 ms
+Execution Time: 0.164 ms

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, ConfirmDialog, InfoRow, MockTag, Screen, Txt } from '../../../../src/components';
+import { Badge, Button, Card, ConfirmDialog, InfoRow, Screen, Txt } from '../../../../src/components';
 import { Row, useAdminInvalidate } from '../../../../src/features/admin';
 import { QueryView } from '../../../../src/components';
 import { adminService } from '../../../../src/services';
@@ -44,7 +44,6 @@ export default function PayoutDetails() {
                 <Button title="Reject" variant="secondary" onPress={() => setDecision('reject')} />
               </>
             )}
-            <MockTag />
           </>
         )}
       </QueryView>

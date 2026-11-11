@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Redirect, router } from 'expo-router';
-import { Button, Screen, StepProgress, TextField } from '../../../src/components';
+import { Button, Notice, Screen, StepProgress, TextField, Txt } from '../../../src/components';
+import { currentPosition } from '../../../src/features/tracking';
 import { useSession } from '../../../src/navigation';
 import { useChefDraft } from '../../../src/store';
 import { isValidEmail, required } from '../../../src/utils';
@@ -39,8 +40,12 @@ export default function ChefRegister() {
       <StepProgress step={1} total={5} label="Basic details" />
       <TextField label="Full name" value={draft.fullName ?? ''} onChangeText={(fullName) => update({ fullName })} error={show('fullName')} autoCapitalize="words" />
       <TextField label="Email" value={draft.email ?? ''} onChangeText={(email) => update({ email: email.trim() })} error={show('email')} keyboardType="email-address" autoCapitalize="none" />
-      <TextField label="City" value={draft.city ?? ''} onChangeText={(city) => update({ city })} error={show('city')} placeholder="Noida" />
-      <TextField label="Locality / sector" value={draft.area ?? ''} onChangeText={(area) => update({ area })} error={show('area')} placeholder="Sector 76" />
+      <TextField label="City" value={draft.city ?? ''} onChangeText={(city) => update({ city })} error={show('city')} placeholder="Bengaluru" />
+      <TextField label="Locality / sector" value={draft.area ?? ''} onChangeText={(area) => update({ area })} error={show('area')} placeholder="Indiranagar" />
+      <Button title={draft.homeLat ? 'Home base set · update' : 'Set home base to my current location'} variant="secondary" small icon="locate-outline"
+        onPress={() => currentPosition().then((p) => update({ homeLat: p.lat, homeLng: p.lng })).catch((e) => update({ homeLat: undefined, homeLng: undefined, homeError: (e as Error).message }))} />
+      {draft.homeLat != null && <Txt variant="caption">Home base {draft.homeLat.toFixed(4)}, {draft.homeLng?.toFixed(4)} — jobs are offered within the assignment radius of this point.</Txt>}
+      {draft.homeError && <Notice tone="error">{draft.homeError}</Notice>}
     </Screen>
   );
 }

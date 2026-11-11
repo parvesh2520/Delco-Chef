@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { router } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { Button, Notice, Screen, StepProgress, TextField } from '../../../src/components';
-import { chefService, type ChefApplicationDraft } from '../../../src/services';
+import { authService, chefService, type ChefApplicationDraft } from '../../../src/services';
 import { useAuthStore, useChefDraft } from '../../../src/store';
 import { isValidIfsc, required } from '../../../src/utils';
 
@@ -30,9 +30,10 @@ export default function ChefRegisterBank() {
 
   const submit = useMutation({
     mutationFn: () => chefService.submitApplication({ ...draft, bank } as ChefApplicationDraft),
-    onSuccess: () => {
+    onSuccess: async (chef) => {
       if (draft.fullName) setName(draft.fullName);
-      setChefStatus('submitted');
+      setChefStatus(chef.status);
+      await authService.reloadSession().catch(() => undefined);
       reset();
       if (router.canDismiss()) router.dismissAll();
       router.replace('/chef/register/pending');

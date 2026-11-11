@@ -1,44 +1,44 @@
-// MOCK authentication. No real OTP is sent. Replace with FastAPI endpoints:
-//   POST /auth/otp/request   { phone, role }
-//   POST /auth/otp/verify    { phone, code, role } -> { access_token, user, ... }
-import { MOCK_AUTH } from '../constants';
-import type { Session, UserRole } from '../types';
-import { db, mock, mockError } from './mock';
+import type { Session } from '../types';
+import { useAuthStore } from '../store';
+import { api, refreshSession } from './api';
+import { sessionStorage } from './session';
 
 export type LoginPortal = 'customer' | 'chef' | 'admin';
 
 export const authService = {
-  requestOtp: (phone: string, _portal: LoginPortal) => mock({ sentTo: phone, expiresInSec: 60 }),
+  /** POST /auth/otp/request — the code is delivered by the backend's OTP provider (dev: written to the server log). */
+  requestOtp: (phone: string, portal: LoginPortal) =>
+    api.post<{ sentTo: string; expiresInSec: number; resendAfterSec: number }>('/auth/otp/request', { phone, portal }),
 
-  verifyOtp: (phone: string, code: string, portal: LoginPortal): Promise<Session> => {
-    if (code !== MOCK_AUTH.otp) return mockError('Incorrect code. Please try again.');
-    const now = new Date().toISOString();
-    const user = (id: string, fullName: string, role: UserRole) => ({ id, fullName, phone, role, createdAt: now });
-
-    if (portal === 'admin') {
-      const admin = db.admins.find((a) => a.phone === phone && a.active);
-      // Unknown numbers are not admins: caller routes to the unauthorized screen.
-      if (!admin) return mockError('UNAUTHORIZED');
-      return mock({ user: user(admin.id, admin.name, admin.role), token: 'mock-token' });
-    }
-    if (portal === 'chef') {
-      const chef = db.chefs.find((c) => c.phone === phone);
-      if (phone === MOCK_AUTH.chefRejected) {
-        return mock({ user: user('chx', 'Applicant', 'chef'), token: 'mock-token', chefStatus: 'rejected' });
-      }
-      return mock({
-        user: user(chef?.id ?? 'ch-new', chef?.name ?? '', 'chef'),
-        token: 'mock-token',
-        chefStatus: chef?.status ?? 'draft',
-      });
-    }
-    const existing = phone === MOCK_AUTH.customerExisting;
-    return mock({
-      user: user(existing ? 'c1' : 'c-new', existing ? db.customerProfile.fullName : '', 'customer'),
-      token: 'mock-token',
-      onboarded: existing,
-    });
+  verifyOtp: async (phone: string, code: string, portal: LoginPortal): Promise<Session> => {
+    const s = await api.post<Session & { refreshToken: string }>('/auth/otp/verify', { phone, code, portal, device: 'mobile' });
+    await sessionStorage.set(s.refreshToken);
+    return s;
   },
 
-  logout: () => mock(true, 150),
+  /** Restores the session after an app restart from the refresh token in SecureStore. */
+  restore: async (): Promise<boolean> => {
+    try {
+      return !!(await refreshSession());
+    } catch {
+      return false; // offline: stay signed out of the UI but keep the stored token for next launch
+    }
+  },
+
+  /** Re-reads onboarding / chef status from the server after they change. */
+  reloadSession: async () => {
+    const me = await api.get<Session>('/auth/me');
+    const cur = useAuthStore.getState().session;
+    if (cur) useAuthStore.getState().signIn({ ...me, token: cur.token });
+    return me;
+  },
+
+  logout: async () => {
+    const refreshToken = await sessionStorage.get();
+    try {
+      await api.post('/auth/logout', { refreshToken });
+    } finally {
+      await sessionStorage.clear();
+    }
+  },
 };

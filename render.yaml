@@ -1,0 +1,20 @@
+# Render free web service (sleeps when idle; first request after sleep is slow). Database: Neon.
+services:
+  - type: web
+    name: delco-chefs-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: false   # CI triggers the deploy hook after tests pass
+    envVars:
+      - { key: ENVIRONMENT, value: production }
+      - { key: DATABASE_URL, sync: false }
+      - { key: DIRECT_URL, sync: false }
+      - { key: SECRET_KEY, generateValue: true }
+      - { key: FIELD_ENCRYPTION_KEY, sync: false }
+      - { key: HMAC_LOOKUP_KEY, sync: false }
+      - { key: PUBLIC_BASE_URL, sync: false }
+      - { key: RAZORPAY_KEY_ID, sync: false }
+      - { key: RAZORPAY_KEY_SECRET, sync: false }
+      - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }

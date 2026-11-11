@@ -1,52 +1,81 @@
-from typing import Generator
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from collections.abc import Generator
+from contextlib import contextmanager
+
+from sqlalchemy import MetaData, create_engine, text
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
 from app.core.config import settings
 
-Base = declarative_base()
+NAMING = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
 
-_engine = None
-_SessionLocal = None
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=NAMING)
 
 
-def get_engine():
-    global _engine
-    if _engine is None:
-        db_url = settings.DATABASE_URL
-        connect_args = {}
-        if db_url.startswith("sqlite"):
-            connect_args = {"check_same_thread": False}
+engine = create_engine(
+    settings.sqlalchemy_url,
+    pool_pre_ping=True,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_recycle=300,  # Neon closes idle connections; recycle before that happens.
+)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def prefer_ipv4(eng) -> None:
+    """For networks where IPv6 to the database times out: connect to a fresh IPv4 address each time, while libpq keeps
+    the hostname for TLS SNI / certificate checks (Neon routes by SNI)."""
+    import socket
+    from sqlalchemy import event
+
+    host = eng.url.host
+
+    @event.listens_for(eng, "do_connect")
+    def _ipv4(dialect, conn_rec, cargs, cparams):
         try:
-            _engine = create_engine(
-                db_url,
-                connect_args=connect_args,
-                pool_pre_ping=True,
-            )
-        except Exception:
-            # Fallback to in-memory sqlite if driver is missing in local test environment
-            _engine = create_engine(
-                "sqlite:///:memory:",
-                connect_args={"check_same_thread": False},
-            )
-    return _engine
+            cparams["hostaddr"] = socket.getaddrinfo(host, eng.url.port or 5432, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+        except OSError:
+            pass  # fall back to normal resolution
 
 
-def get_session_factory():
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=get_engine()
-        )
-    return _SessionLocal
+if settings.DB_PREFER_IPV4:
+    prefer_ipv4(engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Dependency for obtaining database sessions."""
-    session_factory = get_session_factory()
-    db = session_factory()
+    db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def session_scope() -> Generator[Session, None, None]:
+    """For background jobs: commit on success, roll back on error."""
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def check_database() -> tuple[bool, str | None]:
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("select 1"))
+            rev = conn.execute(text("select version_num from alembic_version")).scalar()
+        return True, rev
+    except Exception:
+        return False, None

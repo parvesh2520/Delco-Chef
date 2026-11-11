@@ -1,0 +1,42 @@
+{
+  "history": {
+    "requests": 1150,
+    "rps": 57.5,
+    "p50_ms": 752.8,
+    "p95_ms": 2048.3,
+    "p99_ms": 3057.0,
+    "error_rate": 0.0
+  },
+  "suggestions": {
+    "requests": 743,
+    "rps": 37.1,
+    "p50_ms": 1182.1,
+    "p95_ms": 2678.5,
+    "p99_ms": 3542.2,
+    "error_rate": 0.0
+  },
+  "ingest": {
+    "requests": 3209,
+    "rps": 160.4,
+    "p50_ms": 285.2,
+    "p95_ms": 441.6,
+    "p99_ms": 2166.4,
+    "error_rate": 0.0
+  },
+  "queue": {
+    "requests": 200,
+    "rps": 10.0,
+    "p50_ms": 5800.5,
+    "p95_ms": 8218.7,
+    "p99_ms": 10032.4,
+    "error_rate": 0.0
+  },
+  "stage_summary": {
+    "requests": 2767,
+    "rps": 138.3,
+    "p50_ms": 325.9,
+    "p95_ms": 508.8,
+    "p99_ms": 2282.2,
+    "error_rate": 0.0
+  }
+}

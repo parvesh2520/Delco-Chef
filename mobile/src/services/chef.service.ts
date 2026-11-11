@@ -1,46 +1,55 @@
-// Chef registration, assignments, off-days, earnings. MOCK.
-// Target endpoints: POST /chefs/applications, GET /chefs/me, GET /chefs/me/assignments, POST /assignments/{id}/respond
-import type { BankDetails, Chef, Earnings } from '../types';
-import { db, mock, mockError } from './mock';
+// Chef registration, assignments, off-days, earnings.
+import type { Assignment, BankDetails, Chef, Earnings } from '../types';
+import { api } from './api';
+
+export type ChefDocKind = 'aadhaar' | 'pan' | 'police_verification' | 'photo';
 
 export interface ChefApplicationDraft {
   fullName: string;
   email: string;
   city: string;
   area: string;
+  homeLat?: number;
+  homeLng?: number;
+  /** UI-only: last error from the location prompt. */
+  homeError?: string;
   experienceYears: string;
   cuisines: string[];
   specialities: string;
-  documents: Partial<Record<'aadhaar' | 'pan' | 'police_verification' | 'photo', string>>;
+  idNumber: string;
+  taxNumber: string;
+  /** Local image URIs picked by the chef; uploaded before submit. */
+  documents: Partial<Record<ChefDocKind, string>>;
   bank: Omit<BankDetails, 'accountNumberMasked'> & { accountNumber: string };
 }
 
-const offDays: Record<string, string[]> = { ch1: [] };
-
 export const chefService = {
-  getMe: (chefId: string) => mock(db.chefs.find((c) => c.id === chefId) ?? null),
-  updateMe: (chefId: string, patch: Partial<Chef>) => {
-    const c = db.chefs.find((x) => x.id === chefId);
-    return c ? mock(Object.assign(c, patch)) : mockError('Chef not found');
-  },
-  submitApplication: (_draft: ChefApplicationDraft) => mock({ status: 'submitted' as const }, 800),
+  getMe: (_chefId?: string) => api.get<Chef>('/chefs/me'),
+  updateMe: (_chefId: string, patch: Partial<Chef>) => api.patch<Chef>('/chefs/me', patch),
 
-  listAssignments: () => mock(db.assignments),
-  getAssignment: (id: string) => mock(db.assignments.find((a) => a.id === id) ?? null),
-  respondAssignment: (id: string, accept: boolean, _reason?: string) => {
-    const a = db.assignments.find((x) => x.id === id);
-    if (!a) return mockError('Assignment not found');
-    if (a.status !== 'offered') return mockError('This assignment is no longer open.');
-    a.status = accept ? 'accepted' : 'declined';
-    return mock(a);
+  uploadDocument: (type: ChefDocKind, uri: string, mimeType = 'image/jpeg') => {
+    const form = new FormData();
+    form.append('file', { uri, name: `${type}.${mimeType === 'image/png' ? 'png' : 'jpg'}`, type: mimeType } as unknown as Blob);
+    return api.upload<{ id: string; type: string }>(`/chefs/me/documents/${type}`, form);
   },
 
-  getOffDays: (chefId: string) => mock(offDays[chefId] ?? []),
-  saveOffDays: (chefId: string, days: string[]) => mock((offDays[chefId] = days)),
+  submitApplication: async (draft: ChefApplicationDraft) => {
+    for (const [type, uri] of Object.entries(draft.documents)) {
+      if (uri) await chefService.uploadDocument(type as ChefDocKind, uri);
+    }
+    const { documents: _d, homeError: _e, ...body } = draft;
+    return api.post<Chef>('/chefs/me/application', body);
+  },
 
-  getEarnings: (): Promise<Earnings> =>
-    mock({
-      period: 'November 2026', total: 14850, visits: 33, pendingPayout: 9900,
-      entries: db.visits.filter((v) => v.status === 'completed').map((v) => ({ id: v.id, date: v.date, customerName: v.customerName, amount: 450, status: 'pending' as const })),
-    }),
+  listAssignments: () => api.get<Assignment[]>('/chefs/me/assignments'),
+  getAssignment: (id: string) => api.get<Assignment>(`/chefs/me/assignments/${id}`),
+  respondAssignment: (id: string, accept: boolean, reason?: string) =>
+    api.post<Assignment>(`/assignments/${id}/respond`, { accept, reason }),
+
+  getOffDays: (_chefId?: string) => api.get<string[]>('/chefs/me/off-days'),
+  saveOffDays: (_chefId: string, days: string[]) =>
+    api.put<{ days: string[]; conflicts: string[] }>('/chefs/me/off-days', { days }).then((r) => r.days),
+
+  getEarnings: () => api.get<Earnings>('/chefs/me/earnings'),
+  listAttendance: () => api.get<{ id: string; visitId: string; date: string; workedMinutes?: number; status: string }[]>('/chefs/me/attendance'),
 };

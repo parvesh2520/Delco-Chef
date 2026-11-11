@@ -2,7 +2,7 @@ import React from 'react';
 import { Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Card, InfoRow, MockTag, Notice, QueryView, Screen, Txt } from '../../../src/components';
+import { Badge, Button, Card, InfoRow, Notice, QueryView, Screen, Txt } from '../../../src/components';
 import { paymentService } from '../../../src/services';
 import { useToast } from '../../../src/store';
 import { formatCurrency, formatDateTime } from '../../../src/utils';
@@ -55,7 +55,6 @@ export default function PaymentLink() {
                   <Notice>Pay by UPI, card or net banking on the secure payment page. Return here when done.</Notice>
                 </>
               )}
-              <MockTag>Payment gateway not connected — link is a placeholder</MockTag>
             </>
           );
         }}
