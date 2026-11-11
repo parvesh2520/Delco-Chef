@@ -27,11 +27,47 @@ export function PhoneLogin({ portal, footer }: { portal: LoginPortal; footer?: R
     onSuccess: () => router.push({ pathname: '/otp', params: { phone, portal } }),
   });
   const error = touched && !isValidPhone(phone) ? 'Enter a valid 10-digit Indian mobile number' : undefined;
+
+  const defaultMockPhone =
+    portal === 'customer'
+      ? MOCK_AUTH.customerExisting
+      : portal === 'chef'
+      ? MOCK_AUTH.chefApproved
+      : MOCK_AUTH.opsAdmin;
+
   return (
-    <Screen eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} footer={
-      <Button title="Send OTP" loading={send.isPending} onPress={() => (setTouched(true), isValidPhone(phone) && send.mutate())} />
-    }>
-      <TextField label="Mobile number" prefix="+91" keyboardType="phone-pad" maxLength={10} value={phone} onChangeText={(t) => setPhone(t.replace(/\D/g, ''))} onBlur={() => setTouched(true)} error={error} placeholder="98765 43210" autoFocus />
+    <Screen
+      eyebrow={c.eyebrow}
+      title={c.title}
+      subtitle={c.subtitle}
+      footer={
+        <Button
+          title="Send OTP"
+          loading={send.isPending}
+          onPress={() => (setTouched(true), isValidPhone(phone) && send.mutate())}
+        />
+      }
+    >
+      <TextField
+        label="Mobile number"
+        prefix="+91"
+        keyboardType="phone-pad"
+        maxLength={10}
+        value={phone}
+        onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
+        onBlur={() => setTouched(true)}
+        error={error}
+        placeholder="98765 43210"
+        autoFocus
+      />
+      <View style={{ marginVertical: 4 }}>
+        <Button
+          title={`⚡ Auto-fill Test Phone (${defaultMockPhone})`}
+          variant="secondary"
+          small
+          onPress={() => setPhone(defaultMockPhone)}
+        />
+      </View>
       <Notice icon="flask-outline">Mock login: {c.hint}</Notice>
       {footer}
     </Screen>
@@ -55,12 +91,39 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
       if (e.message === 'UNAUTHORIZED') router.replace({ pathname: '/access-denied', params: { reason: 'not_admin' } });
     },
   });
-  const resend = useMutation({ mutationFn: () => authService.requestOtp(phone, portal), onSuccess: () => setResendKey((k) => k + 1) });
+  const resend = useMutation({
+    mutationFn: () => authService.requestOtp(phone, portal),
+    onSuccess: () => setResendKey((k) => k + 1),
+  });
+
   return (
-    <Screen eyebrow="Verify" title="Enter the 6-digit code" subtitle={`Sent to ${maskPhone(phone)}`} footer={
-      <Button title="Verify & continue" disabled={code.length !== 6} loading={verify.isPending} onPress={() => verify.mutate()} />
-    }>
-      <CodeInput length={6} value={code} onChange={setCode} error={verify.isError && verify.error.message !== 'UNAUTHORIZED' ? verify.error.message : undefined} />
+    <Screen
+      eyebrow="Verify"
+      title="Enter the 6-digit code"
+      subtitle={`Sent to ${maskPhone(phone)}`}
+      footer={
+        <Button
+          title="Verify & continue"
+          disabled={code.length !== 6}
+          loading={verify.isPending}
+          onPress={() => verify.mutate()}
+        />
+      }
+    >
+      <CodeInput
+        length={6}
+        value={code}
+        onChange={setCode}
+        error={verify.isError && verify.error.message !== 'UNAUTHORIZED' ? verify.error.message : undefined}
+      />
+      <View style={{ marginVertical: 6, alignItems: 'center' }}>
+        <Button
+          title={`⚡ Auto-fill OTP (${MOCK_AUTH.otp})`}
+          variant="secondary"
+          small
+          onPress={() => setCode(MOCK_AUTH.otp)}
+        />
+      </View>
       <View style={{ alignItems: 'center', gap: 8 }}>
         {left > 0 ? (
           <Txt variant="small">Resend code in {left}s</Txt>
@@ -69,7 +132,9 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
         )}
         <Button title="Change number" variant="ghost" small onPress={() => router.back()} />
       </View>
-      <Txt variant="caption" center color={colors.textMuted}>Use {MOCK_AUTH.otp} in this build.</Txt>
+      <Txt variant="caption" center color={colors.textMuted}>
+        Use {MOCK_AUTH.otp} in this build.
+      </Txt>
       <MockTag>Mock OTP — no SMS is sent</MockTag>
     </Screen>
   );
