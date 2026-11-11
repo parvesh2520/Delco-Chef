@@ -1,9 +1,13 @@
 import React from 'react';
 import { Redirect } from 'expo-router';
 import { homeFor, useSession } from '../src/navigation';
+import Welcome from './(auth)/welcome';
 
-/** Entry: send signed-in users to their role home, everyone else to Welcome. */
+/** Entry: send signed-in users to their role home, render Welcome immediately for guests. */
 export default function Index() {
   const session = useSession();
-  return <Redirect href={session ? homeFor(session) : '/welcome'} />;
+  if (session) {
+    return <Redirect href={homeFor(session)} />;
+  }
+  return <Welcome />;
 }

@@ -9,17 +9,21 @@ import { queryClient } from '../src/services';
 import { ToastHost } from '../src/components';
 import { colors } from '../src/theme';
 
-// Keep the splash screen visible while fonts load
-SplashScreen.preventAutoHideAsync().catch(() => {});
-
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ Calistoga_400Regular, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold });
+  const [loaded, error] = useFonts({
+    Calistoga_400Regular,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_700Bold,
+  });
 
   useEffect(() => {
-    if (loaded || error) SplashScreen.hideAsync().catch(() => {});
+    // Hide splash screen immediately once layout mounts or fonts resolve
+    const hide = () => SplashScreen.hideAsync().catch(() => {});
+    hide();
+    const timer = setTimeout(hide, 200);
+    return () => clearTimeout(timer);
   }, [loaded, error]);
-
-  if (!loaded && !error) return null;
 
   return (
     <QueryClientProvider client={queryClient}>
