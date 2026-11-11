@@ -40,11 +40,11 @@ delco-chefs/
 │   │   ├── index.tsx                        # Initial launch screen
 │   │   ├── (auth)/
 │   │   │   └── _layout.tsx                  # Authentication flow route group
-│   │   ├── (customer)/
+│   │   ├── customer/
 │   │   │   └── _layout.tsx                  # Customer portal flow
-│   │   ├── (chef)/
+│   │   ├── chef/
 │   │   │   └── _layout.tsx                  # Chef portal flow
-│   │   └── (admin)/
+│   │   └── admin/
 │   │       └── _layout.tsx                  # Administrator portal flow
 │   │
 │   ├── src/                                 # Shared application source code

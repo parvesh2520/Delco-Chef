@@ -1,24 +1,29 @@
+// Palette taken from delcochefs.com: deep plum, purple, warm orange on cream.
 export const colors = {
-  primary: '#E25822', // Flame / Culinary orange
-  primaryDark: '#B83F10',
-  primaryLight: '#FFEDE4',
-  secondary: '#1E293B',
-  accent: '#F59E0B',
+  primary: '#3F1A42', // plum — headings, primary buttons
+  primaryLight: '#F3E8F2',
+  purple: '#86308B',
+  accent: '#E8983E', // warm orange — CTAs, highlights
+  accentLight: '#FBEBD6',
 
-  // Neutrals
-  background: '#FFFFFF',
-  backgroundSecondary: '#F8FAFC',
+  background: '#FAF4E8', // cream page
+  backgroundSecondary: '#FFF8EF',
   card: '#FFFFFF',
-  text: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  border: '#E2E8F0',
+  sand: '#F7F5F1',
+  text: '#3F1A42',
+  textSecondary: '#81777C',
+  textMuted: '#A79EA2',
+  textOnDark: '#FFF8EF',
+  border: '#E7DCD2',
 
-  // Status
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  success: '#2F7D4F',
+  successLight: '#E3F1E8',
+  warning: '#B8701C',
+  warningLight: '#FBEBD6',
+  error: '#B3261E',
+  errorLight: '#F8E1DF',
+  info: '#86308B',
+  infoLight: '#F3E8F2',
 } as const;
 
 export type Colors = typeof colors;

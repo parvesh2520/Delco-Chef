@@ -1,12 +1,10 @@
 import React from 'react';
-import { Stack } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
+import { homeFor, useSession } from '../../src/navigation';
 
+/** Auth screens are only for signed-out users. */
 export default function AuthLayout() {
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-      }}
-    />
-  );
+  const session = useSession();
+  if (session) return <Redirect href={homeFor(session)} />;
+  return <Stack screenOptions={{ headerShown: false }} />;
 }
