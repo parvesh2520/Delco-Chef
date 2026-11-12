@@ -178,7 +178,7 @@ export function Calendar({
               key={i}
               disabled={disabled}
               onPress={() => onToggle?.(key)}
-              accessibilityLabel={`${d.toDateString()}${on ? ', selected off-day' : ''}${!isAllowed ? ', no service scheduled' : ''}`}
+              accessibilityLabel={`${d.toDateString()}${on ? ', marked as day off' : disabled ? ', not a service day' : ', service day'}`}
               style={styles.cell}
             >
               <View
@@ -186,18 +186,15 @@ export function Calendar({
                   styles.day,
                   on && { backgroundColor: colors.accent },
                   mark && !on && { borderWidth: 1.5, borderColor: colors.purple },
-                  !isAllowed && inRange && { opacity: 0.3 },
                 ]}
               >
                 <Txt
                   variant="label"
-                  color={disabled && !on ? colors.textMuted : colors.primary}
+                  color={on ? '#FFFFFF' : disabled ? colors.textMuted : colors.primary}
+                  style={on && { fontWeight: '700' }}
                 >
                   {d.getDate()}
                 </Txt>
-                {isAllowed && inRange && !on && (
-                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.purple, marginTop: 1 }} />
-                )}
               </View>
             </Pressable>
           );

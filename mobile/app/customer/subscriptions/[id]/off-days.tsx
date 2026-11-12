@@ -72,16 +72,18 @@ function OffDayEditor({ sub, schedule }: { sub: Subscription; schedule: Schedule
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginVertical: spacing.xs }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.purple }} />
+          <Txt variant="caption" style={{ fontWeight: '600' }} color={colors.primary}>15</Txt>
           <Txt variant="caption">Service day</Txt>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent }} />
-          <Txt variant="caption">Off-day</Txt>
+          <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <Txt variant="caption" color="#FFFFFF" style={{ fontSize: 10, fontWeight: '700' }}>✓</Txt>
+          </View>
+          <Txt variant="caption">Day off (orange)</Txt>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textMuted, opacity: 0.4 }} />
-          <Txt variant="caption">No service</Txt>
+          <Txt variant="caption" color={colors.textMuted}>16</Txt>
+          <Txt variant="caption" color={colors.textMuted}>Non-service / Past</Txt>
         </View>
       </View>
 
