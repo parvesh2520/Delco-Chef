@@ -1,9 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, LayoutAnimation, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { PopIn, PulseDot } from '../motion';
+import React, { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { WebView as NativeWebView } from 'react-native-webview';
 import * as ImagePicker from 'expo-image-picker';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { APP_CONFIG } from '../constants';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../theme';
 import { toDateKey } from '../utils';
@@ -11,75 +9,97 @@ import type { LatLng } from '../types';
 import { Button } from './Button';
 import { Txt } from './Txt';
 
+const WebView = NativeWebView as unknown as React.ComponentType<any>;
+
 /**
- * Google map with destination + chef markers (react-native-maps). When maps are disabled for a build
- * (EXPO_PUBLIC_MAPS_ENABLED=false, e.g. no API key yet) it falls back to a stylised relative-position view.
+ * Real Google Map preview with destination (customer home) + live chef markers.
  */
 export function MapPreview({ destination, chef, height = 220, label }: { destination?: LatLng; chef?: LatLng; height?: number; label?: string }) {
-  if (APP_CONFIG.mapsEnabled && destination) {
-    const lats = [destination.lat, ...(chef ? [chef.lat] : [])];
-    const lngs = [destination.lng, ...(chef ? [chef.lng] : [])];
-    const region = {
-      latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
-      longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
-      latitudeDelta: Math.max(0.01, (Math.max(...lats) - Math.min(...lats)) * 1.8),
-      longitudeDelta: Math.max(0.01, (Math.max(...lngs) - Math.min(...lngs)) * 1.8),
-    };
-    return (
-      <View style={[styles.map, { height }]} accessibilityLabel={label ?? 'Map'}>
-        <MapView
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          style={StyleSheet.absoluteFill}
-          region={region}
-          toolbarEnabled={false}
-          showsUserLocation
-        >
-          <Marker coordinate={{ latitude: destination.lat, longitude: destination.lng }} title="Home" pinColor={colors.primary} />
-          {chef && <Marker coordinate={{ latitude: chef.lat, longitude: chef.lng }} title="Your chef" pinColor={colors.accent} />}
-        </MapView>
-      </View>
-    );
-  }
-  return <FallbackMap destination={destination} chef={chef} height={height} label={label} />;
-}
+  const destLat = destination?.lat || 12.9716;
+  const destLng = destination?.lng || 77.5946;
+  const chefLat = chef?.lat;
+  const chefLng = chef?.lng;
 
-/** Stylised map used when Google Maps is off. The chef marker glides to each new GPS fix and pulses while live. */
-function FallbackMap({ destination, chef, height, label }: { destination?: LatLng; chef?: LatLng; height: number; label?: string }) {
-  const last = useRef(chef ? `${chef.lat},${chef.lng}` : '');
-  const key = chef ? `${chef.lat},${chef.lng}` : '';
-  useEffect(() => {
-    if (key !== last.current) last.current = key;
-  }, [key]);
-  if (key !== last.current && last.current) {
-    LayoutAnimation.configureNext({ duration: 900, update: { type: LayoutAnimation.Types.easeInEaseOut } });
-  }
-  const pos = (p: LatLng) => {
-    if (!destination) return { left: '50%', top: '50%' } as const;
-    const dx = (p.lng - destination.lng) * 1800;
-    const dy = (destination.lat - p.lat) * 1800;
-    return { left: `${Math.min(88, Math.max(8, 50 + dx))}%`, top: `${Math.min(85, Math.max(10, 55 + dy))}%` } as const;
-  };
+  const html = useMemo(() => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #FAF4E8; overflow: hidden; }
+    .home-pin {
+      width: 32px; height: 32px; background: ${colors.primary};
+      border: 3px solid #FFFFFF; border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg); box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .home-dot { width: 10px; height: 10px; background: #FFFFFF; border-radius: 50%; }
+    .chef-pin {
+      width: 36px; height: 36px; background: ${colors.accent};
+      border: 3px solid #FFFFFF; border-radius: 50%;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .leaflet-control-attribution { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var bounds = [];
+    bounds.push([${destLat}, ${destLng}]);
+    ${chefLat && chefLng ? `bounds.push([${chefLat}, ${chefLng}]);` : ''}
+
+    var map = L.map('map', { zoomControl: false, attributionControl: false });
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(map);
+
+    var homeIcon = L.divIcon({
+      className: '',
+      html: '<div class="home-pin"><div class="home-dot"></div></div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+    L.marker([${destLat}, ${destLng}], { icon: homeIcon }).addTo(map);
+
+    ${chefLat && chefLng ? `
+      var chefIcon = L.divIcon({
+        className: '',
+        html: '<div class="chef-pin">👨‍🍳</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      L.marker([${chefLat}, ${chefLng}], { icon: chefIcon }).addTo(map);
+    ` : ''}
+
+    if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [40, 40] });
+    } else {
+      map.setView([${destLat}, ${destLng}], 16);
+    }
+  </script>
+</body>
+</html>
+    `;
+  }, [destLat, destLng, chefLat, chefLng]);
+
   return (
     <View style={[styles.map, { height }]} accessibilityLabel={label ?? 'Map preview'}>
-      {[20, 45, 70].map((t) => <View key={`h${t}`} style={[styles.road, { top: `${t}%`, left: 0, right: 0, height: 10 }]} />)}
-      {[25, 60].map((l) => <View key={`v${l}`} style={[styles.road, { left: `${l}%`, top: 0, bottom: 0, width: 10 }]} />)}
-      {destination && (
-        <View style={[styles.pinBox, pos(destination)]}>
-          <PopIn style={styles.pin}>
-            <Ionicons name="home" size={18} color={colors.textOnDark} />
-          </PopIn>
-        </View>
-      )}
-      {chef && (
-        <View style={[styles.pinBox, pos(chef)]}>
-          <View style={styles.halo} pointerEvents="none">
-            <PulseDot color={colors.accent} size={26} />
-          </View>
-          <PopIn delay={200} style={[styles.pin, styles.chefPin]}>
-            <Ionicons name="bicycle" size={18} color={colors.primary} />
-          </PopIn>
-        </View>
-      )}
+      <WebView
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled={false}
+      />
     </View>
   );
 }

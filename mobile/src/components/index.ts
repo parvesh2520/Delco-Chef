@@ -7,5 +7,6 @@ export * from './States';
 export * from './Dialog';
 export * from './Display';
 export * from './Media';
+export * from './RealMap';
 export * from './Toast';
 export * from './NotificationCentre';
