@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import MapView, { Marker, type MapPressEvent } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent } from 'react-native-maps';
 import { Button, Card, MapPreview, Notice, Screen, Txt } from '../../../src/components';
 import { APP_CONFIG } from '../../../src/constants';
 import { DEFAULT_CENTRE, usePickedLocation } from '../../../src/features/customer';
@@ -17,21 +17,38 @@ export default function MapPicker() {
   const [pin, setPin] = useState<LatLng>(initial);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mapRef = useRef<MapView>(null);
   const setPicked = usePickedLocation((s) => s.setPicked);
   const inIndia = isWithinIndia(pin.lat, pin.lng);
-  const onPress = (e: MapPressEvent) => setPin({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude });
+
+  const onPress = (e: MapPressEvent) => {
+    const next = { lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude };
+    setPin(next);
+  };
+
   const locate = async () => {
     setLocating(true);
     setError(null);
     try {
       const p = await currentPosition();
-      setPin({ lat: p.lat, lng: p.lng });
+      const next = { lat: p.lat, lng: p.lng };
+      setPin(next);
+      mapRef.current?.animateToRegion(
+        {
+          latitude: next.lat,
+          longitude: next.lng,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        },
+        800
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLocating(false);
     }
   };
+
   return (
     <Screen
       title="Pin your location"
@@ -41,35 +58,45 @@ export default function MapPicker() {
       {APP_CONFIG.mapsEnabled ? (
         <View style={styles.map}>
           <MapView
+            ref={mapRef}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             style={StyleSheet.absoluteFill}
-            initialRegion={{ latitude: pin.lat, longitude: pin.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-            region={{ latitude: pin.lat, longitude: pin.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+            showsUserLocation
+            showsMyLocationButton
+            showsCompass
+            initialRegion={{
+              latitude: pin.lat,
+              longitude: pin.lng,
+              latitudeDelta: 0.008,
+              longitudeDelta: 0.008,
+            }}
             onPress={onPress}
           >
-            <Marker draggable coordinate={{ latitude: pin.lat, longitude: pin.lng }} pinColor={colors.primary}
-              onDragEnd={(e) => setPin({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })} />
+            <Marker
+              draggable
+              coordinate={{ latitude: pin.lat, longitude: pin.lng }}
+              title="Delivery Entrance"
+              description="Drag to adjust exact location"
+              pinColor={colors.accent}
+              onDragEnd={(e) => setPin({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })}
+            />
           </MapView>
         </View>
       ) : (
-        <MapPreview destination={pin} height={300} label="Selected location" />
+        <MapPreview destination={pin} height={380} label="Selected location" />
       )}
       <Card>
-        <Txt variant="label">Selected</Txt>
+        <Txt variant="label">Selected location</Txt>
         <Txt variant="bodyStrong">{pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}</Txt>
       </Card>
       <Button title="Use my current location" variant="secondary" icon="locate-outline" loading={locating} onPress={locate} />
       {error && <Notice tone="error">{error}</Notice>}
       {!inIndia && <Notice tone="error">Location must be within India.</Notice>}
-      {!APP_CONFIG.mapsEnabled && (
-        <Notice tone="warning" icon="map-outline">
-          The interactive map is off in this build (no Google Maps key configured), so the pin can’t be dragged. Use your current location here, or search for your address on the previous screen.
-        </Notice>
-      )}
-      <Notice>The pin is saved with your address so your chef’s check-in and ETA use the exact spot. Locations must be within India.</Notice>
+      <Notice>The pin is saved with your address so your chef’s check-in and ETA use the exact spot.</Notice>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  map: { height: 300, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  map: { height: 380, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
 });

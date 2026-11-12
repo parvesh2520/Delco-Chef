@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
+import { Image, LayoutAnimation, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { PopIn, PulseDot } from '../motion';
 import * as ImagePicker from 'expo-image-picker';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { APP_CONFIG } from '../constants';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../theme';
@@ -27,7 +27,13 @@ export function MapPreview({ destination, chef, height = 220, label }: { destina
     };
     return (
       <View style={[styles.map, { height }]} accessibilityLabel={label ?? 'Map'}>
-        <MapView style={StyleSheet.absoluteFill} region={region} toolbarEnabled={false}>
+        <MapView
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          style={StyleSheet.absoluteFill}
+          region={region}
+          toolbarEnabled={false}
+          showsUserLocation
+        >
           <Marker coordinate={{ latitude: destination.lat, longitude: destination.lng }} title="Home" pinColor={colors.primary} />
           {chef && <Marker coordinate={{ latitude: chef.lat, longitude: chef.lng }} title="Your chef" pinColor={colors.accent} />}
         </MapView>

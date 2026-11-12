@@ -17,11 +17,20 @@ export async function ensureLocationPermission(): Promise<void> {
   if (!granted) throw new LocationDeniedError();
 }
 
-/** One high-accuracy fix for check-in / check-out. Accuracy is sent so the server can refuse weak GPS. */
+/** One fix for check-in, check-out and address picking. Balanced accuracy provides immediate lock with fallback. */
 export async function currentPosition(): Promise<Position> {
   await ensureLocationPermission();
-  const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-  return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? 9999, deviceId };
+  try {
+    const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? 10, deviceId };
+  } catch {
+    const last = await Location.getLastKnownPositionAsync({});
+    if (last) {
+      return { lat: last.coords.latitude, lng: last.coords.longitude, accuracy: last.coords.accuracy ?? 50, deviceId };
+    }
+    const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+    return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? 100, deviceId };
+  }
 }
 
 type QueuedPoint = { lat: number; lng: number; accuracy?: number; recordedAt: string };
