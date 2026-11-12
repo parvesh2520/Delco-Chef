@@ -23,6 +23,7 @@ services:
       DATABASE_URL: postgresql://delco:delco@db:5432/delco
       DIRECT_URL: postgresql://delco:delco@db:5432/delco
       PUBLIC_BASE_URL: http://localhost:8000
+      RUN_MIGRATIONS: "true"  # local stack only; on Render migrations are run deliberately
     ports: ["8000:8000"]
     volumes: [media:/app/media]
 

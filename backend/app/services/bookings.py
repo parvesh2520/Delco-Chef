@@ -11,8 +11,8 @@ from app.domain import IST, ist_datetime, ist_today, parse_hhmm
 from app.domain import board
 from app.domain.geo import bounding_box
 from app.domain.ranking import BookingSlot, ChefCandidate, Weights, rank
-from app.models import (Address, Assignment, BoardMove, Chef, ChefOffDay, CustomerProfile, ServiceRequest, Trial, User,
-                        Visit)
+from app.models import (Address, Assignment, BoardMove, Chef, ChefOffDay, CustomerProfile, ServiceRequest, Subscription,
+                        Trial, User, Visit)
 from app.services import settings as settings_svc
 from app.services.events import SYSTEM, Actor, audit, notify, notify_admins
 from app.services.settings import Settings
@@ -48,6 +48,11 @@ def move(db: Session, r: ServiceRequest, to: board.Stage, actor_kind: str, actor
 
 
 # ---------------- Trial accounting (C1) ----------------
+def decision_stage(trial_number: int) -> str:
+    """The board column where a completed trial waits for the customer's decision."""
+    return "trial1_awaiting_decision" if trial_number == 1 else "trial2_awaiting_decision"
+
+
 def trials_used(db: Session, customer_id: int, service: str) -> int:
     """Trials that are live or consumed. Cancelled-in-time trials don't count."""
     return db.scalar(select(func.count()).select_from(Trial).where(
@@ -188,16 +193,20 @@ def create_request(db: Session, customer: User, service: str, body: dict) -> Ser
     if intent not in ("trial", "subscribe"):
         raise AppError("VALIDATION_ERROR", "Unknown intent.", 422)
     fields = validate_requirements(db, customer.id, service, body, s)
-    r = ServiceRequest(customer_id=customer.id, service=service, stage="request", **fields)
+    # Trials are counted per service, ever. When an earlier request already used trial 1 (e.g. cancelled inside the
+    # 2-hour window), this request's trial is the customer's second: its card starts in "Trial 2: requested", so it
+    # follows the Trial 2 path of the board and ends with the Subscribe / Reject decision.
+    number = trials_used(db, customer.id, service) + 1 if intent == "trial" else 0
+    first_stage = "trial2_requested" if number >= 2 else "request"
+    r = ServiceRequest(customer_id=customer.id, service=service, stage=first_stage, **fields)
     db.add(r)
     try:
         db.flush()
     except IntegrityError:
         db.rollback()
         raise AppError("OPEN_REQUEST_EXISTS", "You already have an open request for this service.", 409) from None
-    db.add(BoardMove(request_id=r.id, from_stage=None, to_stage="request", actor_id=customer.id, actor_kind="customer"))
+    db.add(BoardMove(request_id=r.id, from_stage=None, to_stage=first_stage, actor_id=customer.id, actor_kind="customer"))
     if intent == "trial":
-        number = trials_used(db, customer.id, service) + 1
         t = Trial(request_id=r.id, customer_id=customer.id, service=service, number=number, status="pending_assignment")
         db.add(t)
         db.flush()
@@ -467,8 +476,7 @@ def decide(db: Session, customer: User, trial_id: int, decision: str, body: dict
         raise AppError("TRIAL_NOT_COMPLETED", "You can decide once the trial visit is completed.", 409)
     if t.decision is not None:
         raise AppError("DECISION_ALREADY_MADE", "A decision has already been recorded for this trial.", 409)
-    expected = "trial1_awaiting_decision" if t.number == 1 else "trial2_awaiting_decision"
-    if r.stage != expected:
+    if r.stage != decision_stage(t.number):
         raise AppError("DECISION_NOT_ALLOWED", "This trial is not awaiting a decision.", 409)
     is_last = t.number >= s.int("max_free_trials")
     allowed = ("subscribe", "reject") if is_last else ("subscribe", "another_trial")
@@ -561,16 +569,16 @@ def cancel_trial(db: Session, customer: User, trial_id: int) -> Trial:
             notify(db, "visit_cancelled", db.get(Chef, v.chef_id).user_id, "Visit cancelled",
                    f"The trial on {v.starts_at.astimezone(IST):%d %b %H:%M} was cancelled by the customer.", "/chef/jobs")
     me = Actor.of(customer)
-    if t.number == 1:
+    earlier = db.scalar(select(Trial).where(Trial.request_id == r.id, Trial.number < t.number).order_by(Trial.number).limit(1))
+    if earlier is None:  # the request's only trial: cancelling it closes the card
         frm = r.stage
         r.closed_reason = "Customer cancelled trial"
         r.stage, r.closed_at = "closed", now()
         db.add(BoardMove(request_id=r.id, from_stage=frm, to_stage="closed", actor_id=customer.id, actor_kind="customer",
-                         note="Customer cancelled trial 1"))
+                         note=f"Customer cancelled trial {t.number}"))
     else:
         move(db, r, board.Stage.TRIAL1_AWAITING, "customer_cancel", me, "Customer cancelled trial 2")
-        first = db.scalar(select(Trial).where(Trial.request_id == r.id, Trial.number == 1))
-        first.decision, first.decided_at = None, None  # back to deciding after trial 1
+        earlier.decision, earlier.decided_at = None, None  # back to deciding after trial 1
     notify_admins(db, "trial_cancelled", "Trial cancelled", f"Customer cancelled trial {t.number}.", f"/admin/request/{r.id}")
     db.commit()
     return t
@@ -594,8 +602,15 @@ def admin_move(db: Session, actor: Actor, request_id: int, to: str, note: str | 
         except board.InvalidMove as e:
             raise AppError(e.code, str(e), 409) from None
         raise AppError("BOARD_INVALID_TRANSITION", f"Cannot move a card from {r.stage} to {to} by hand.", 409)
+    note = (note or "").strip()
+    if not note:  # every manual move is a close; the reason is kept in the history and shown on the card
+        raise AppError("CLOSE_REASON_REQUIRED", "Give a reason for closing this card.", 422, fields={"note": "required"})
     move(db, r, target, "admin", actor, note)
-    r.closed_reason = note or "Closed by admin"
+    r.closed_reason = note
+    from app.services import payments
+    sub = db.scalar(select(Subscription).where(Subscription.request_id == r.id).with_for_update())
+    if sub:
+        payments.cancel_unpaid_order(db, sub, now())
     for v in db.scalars(select(Visit).where(Visit.request_id == r.id, Visit.status.in_(("pending_assignment", "needs_manual_assignment", "scheduled")))):
         v.status, v.cancelled_at = "cancelled", now()
     for t in db.scalars(select(Trial).where(Trial.request_id == r.id, Trial.status.in_(("requested", "pending_assignment", "scheduled")))):

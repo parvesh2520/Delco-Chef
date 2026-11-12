@@ -125,8 +125,34 @@ def _refund_dead_link(db: Session, p: Payment, ev: GatewayEvent) -> str:
     return "dead_link_refunded"
 
 
+def accepts_payment(link: PaymentLink, paid_at: datetime | None) -> bool:
+    """A replaced or cancelled link refuses money at once. An active or expired link accepts a payment the customer made
+    before it expired, so a webhook delayed past the expiry (or past our expiry job) is not wrongly refunded."""
+    if link.status in ("replaced", "cancelled"):
+        return False
+    if link.status == "paid":
+        return True  # _mark_paid answers already_paid
+    return (paid_at or now()) < link.expires_at
+
+
+def _payment_for_reference(db: Session, reference: str | None) -> Payment | None:
+    """Our link reference is "pay_<payment id>_<timestamp>"; Razorpay echoes it on events that lack the link id."""
+    parts = (reference or "").split("_")
+    if len(parts) == 3 and parts[0] == "pay" and parts[1].isdigit():
+        return db.get(Payment, int(parts[1]))
+    return None
+
+
 def process_event(db: Session, ev: GatewayEvent) -> str:
     link = db.scalar(select(PaymentLink).where(PaymentLink.gateway_link_id == ev.link_id)) if ev.link_id else None
+    if ev.type == "refund_failed":
+        rf = db.scalar(select(Refund).where(Refund.gateway_refund_id == ev.refund_id).with_for_update())
+        if not rf or rf.status != "requested":
+            return "refund_ignored"
+        rf.status = "failed"
+        notify_admins(db, "refund_failed", "Refund failed", f"Refund {rf.id} for payment {rf.payment_id} failed at the gateway. "
+                      "Follow up with the customer.", f"/admin/payments/{rf.payment_id}")
+        return "refund_failed"
     if ev.type == "refund_processed":
         rf = db.scalar(select(Refund).where(Refund.gateway_refund_id == ev.refund_id).with_for_update())
         if not rf or rf.status == "processed":
@@ -140,24 +166,31 @@ def process_event(db: Session, ev: GatewayEvent) -> str:
         notify(db, "refund_processed", p.customer_id, "Refund processed", f"₹{rf.amount_paise / 100:,.2f} refunded.", f"/customer/payment/{p.id}")
         return "refund_processed"
     if link is None:
-        return "unknown_link"
-    p = _lock_payment(db, link.payment_id)
+        by_ref = _payment_for_reference(db, ev.reference)
+        if by_ref is None or ev.type != "failed":
+            return "unknown_link"
+        p = _lock_payment(db, by_ref.id)
+    else:
+        p = _lock_payment(db, link.payment_id)
+        db.refresh(link)  # re-read under the payment lock: expiry, cancel and regenerate change links while holding it
     if ev.type == "paid":
         if ev.amount_paise is not None and ev.amount_paise != link.amount_paise:
             notify_admins(db, "payment_amount_mismatch", "Payment amount mismatch", f"Payment {p.id} needs review.", f"/admin/payments/{p.id}")
             return "amount_mismatch_flagged"
-        if link.status in ("replaced", "expired", "cancelled") or (link.status == "active" and link.expires_at <= now()):
+        if not accepts_payment(link, ev.occurred_at):
             return _refund_dead_link(db, p, ev)
         return _mark_paid(db, p, link, ev)
     if ev.type == "failed":
-        if p.status == "PAID":
-            return "ignored_already_paid"
+        if p.status not in ("CREATED", "FAILED"):
+            return "ignored_already_paid"  # a late failure never undoes a success or a refund
+        if db.get(Subscription, p.subscription_id).status == "cancelled":
+            return "ignored_order_cancelled"
         p.status, p.failed_at, p.failure_reason = "FAILED", now(), (ev.error or "Payment failed")[:200]
         p.attempts += 1
         notify(db, "payment_failed", p.customer_id, "Payment failed", "Your payment didn't go through. Tap to retry with the same link.",
                f"/customer/payment/{p.id}")
         return "failed"
-    if ev.type == "link_expired" and link.status == "active":
+    if ev.type == "link_expired" and link is not None and link.status == "active":
         link.status = "expired"
         return "link_expired"
     return "ignored"
@@ -181,6 +214,32 @@ def handle_webhook(db: Session, body: bytes, headers: dict) -> dict:
     return {"status": outcome}
 
 
+def _confirmed_paid(link: PaymentLink, payment_ref: str) -> tuple[str, datetime | None]:
+    """A signed redirect only says the browser came back. Before anything is marked PAID, ask the gateway itself for
+    the payment: it must be captured, for exactly the link's amount. Returns ("ok" | "not_paid" | "unverified", paid_at)."""
+    try:
+        info = get_gateway().fetch_payment(payment_ref)
+    except AppError:
+        return "unverified", None  # gateway unreachable: the webhook settles it later; nothing changes now
+    if info is None:  # development sandbox only (refused in production): no gateway API, the signature is the proof
+        return "ok", None
+    if info["status"] != "captured" or info["amount"] != link.amount_paise:
+        return "not_paid", None
+    return "ok", info["created_at"]
+
+
+def _settle_signed_success(db: Session, p: Payment, link: PaymentLink, payment_ref: str) -> str:
+    check, paid_at = _confirmed_paid(link, payment_ref)
+    if check != "ok":
+        return "verification_pending" if check == "unverified" else "not_paid"
+    db.refresh(link)
+    ev = GatewayEvent(f"callback:{payment_ref}", "paid", link.gateway_link_id, payment_ref, link.amount_paise, None, None, None, {},
+                      occurred_at=paid_at)
+    if not accepts_payment(link, paid_at):
+        return _refund_dead_link(db, p, ev)
+    return _mark_paid(db, p, link, ev)
+
+
 def handle_redirect_callback(db: Session, link_id: str, reference: str, status: str, payment_ref: str, signature: str) -> str:
     """Razorpay's checkout redirect. The HMAC signature (key secret) authenticates it; no login is needed.
     Idempotent with the webhook: whichever arrives first marks PAID, the other is a no-op."""
@@ -191,13 +250,7 @@ def handle_redirect_callback(db: Session, link_id: str, reference: str, status: 
     if not link:
         raise not_found("Payment link")
     p = _lock_payment(db, link.payment_id)
-    outcome = "not_paid"
-    if status == "paid":
-        ev = GatewayEvent(f"callback:{payment_ref}", "paid", link_id, payment_ref, link.amount_paise, None, None, None, {})
-        if link.status in ("replaced", "expired", "cancelled") or link.expires_at <= now():
-            outcome = _refund_dead_link(db, p, ev)
-        else:
-            outcome = _mark_paid(db, p, link, ev)
+    outcome = _settle_signed_success(db, p, link, payment_ref) if status == "paid" else "not_paid"
     db.commit()
     return outcome
 
@@ -216,44 +269,83 @@ def verify_client_callback(db: Session, customer_id: int, payment_id: int, body:
     if not link:
         raise not_found("Payment link")
     if status == "paid":
-        ev = GatewayEvent(f"callback:{pref}", "paid", link_id, pref, link.amount_paise, None, None, None, body)
-        if link.status in ("replaced", "expired", "cancelled") or link.expires_at <= now():
-            _refund_dead_link(db, p, ev)
-        else:
-            _mark_paid(db, p, link, ev)
+        _settle_signed_success(db, p, link, pref)
     db.commit()
     return p
 
 
+def cancel_unpaid_order(db: Session, sub: Subscription, at: datetime) -> None:
+    """A subscription closed before payment: cancel it and stop every active link, here and at the gateway, so the
+    customer can no longer pay for a card that is closed. A no-op once the order is paid or already cancelled."""
+    if sub.status != "pending_payment":
+        return
+    sub.status, sub.cancelled_at = "cancelled", at
+    p = db.scalar(select(Payment).where(Payment.subscription_id == sub.id))
+    if p:
+        for link in db.scalars(select(PaymentLink).where(PaymentLink.payment_id == p.id, PaymentLink.status == "active")):
+            link.status = "cancelled"
+            get_gateway().cancel_link(link.gateway_link_id)
+
+
 # ---------------- Refunds (F5) ----------------
-def cancel_subscription(db: Session, customer: User, sub_id: int, reason: str | None) -> dict:
-    sub = db.scalar(select(Subscription).where(Subscription.id == sub_id, Subscription.customer_id == customer.id).with_for_update())
+def first_visit_at(db: Session, sub: Subscription) -> datetime:
+    first = db.scalar(select(Visit.starts_at).where(Visit.subscription_id == sub.id, Visit.status != "cancelled")
+                      .order_by(Visit.starts_at).limit(1))
+    if first is None:  # schedule not built yet by the worker: derive the first visit from start date + slot
+        from app.domain import ist_datetime
+        from app.services.bookings import _slot_times
+        first = ist_datetime(sub.start_date, _slot_times(settings_svc.load(db), sub.slot)[0])
+    return first
+
+
+def refund_quote(db: Session, sub: Subscription, p: Payment | None, at: datetime) -> int:
+    """The refund a cancellation at `at` earns, from the server's stored amount and the 2-hour rule. Never from the app.
+    Cancelling after the first visit has started is outside the assignment's rule and is refused (handled by support)."""
+    if sub.status != "active" or not p or p.status != "PAID":
+        return 0
+    s = settings_svc.load(db)
+    try:
+        return refund_amount(p.amount_paise, first_visit_at(db, sub), at, full_refund_before_hours=s.float("refund_full_before_h"),
+                             partial_percent=s.int("refund_partial_pct"))
+    except RefundNotAllowed:
+        raise AppError("REFUND_NOT_ALLOWED", "Cancellation after the first visit is handled by support.", 409) from None
+
+
+def _own_subscription(db: Session, customer: User, sub_id: int, *, lock: bool) -> tuple[Subscription, Payment | None]:
+    # Lock order matches payment confirmation (payment, then subscription, then request), so they never deadlock.
+    q = select(Payment).join(Subscription, Subscription.id == Payment.subscription_id).where(
+        Subscription.id == sub_id, Subscription.customer_id == customer.id)
+    p = db.scalar(q.with_for_update(of=Payment) if lock else q)
+    sq = select(Subscription).where(Subscription.id == sub_id, Subscription.customer_id == customer.id)
+    sub = db.scalar(sq.with_for_update() if lock else sq)
     if not sub:
         raise not_found("Subscription")
     if sub.status not in ("pending_payment", "active"):
         raise AppError("SUBSCRIPTION_NOT_CANCELLABLE", "This subscription cannot be cancelled.", 409)
-    p = db.scalar(select(Payment).where(Payment.subscription_id == sub.id).with_for_update())
+    return sub, p
+
+
+def cancellation_preview(db: Session, customer: User, sub_id: int) -> dict:
+    """What cancelling now would refund, so the app shows the server's number before the customer confirms."""
+    sub, p = _own_subscription(db, customer, sub_id, lock=False)
+    paise = refund_quote(db, sub, p, now())
+    paid = bool(sub.status == "active" and p and p.status == "PAID")
+    return {"subscriptionId": str(sub.id), "paid": paid, "amountPaid": p.amount_paise / 100 if paid else 0,
+            "refundPaise": paise, "refundAmount": paise / 100, "fullRefund": paid and paise == p.amount_paise,
+            "firstVisitAt": first_visit_at(db, sub).isoformat() if paid else None}
+
+
+def cancel_subscription(db: Session, customer: User, sub_id: int, reason: str | None) -> dict:
+    sub, p = _own_subscription(db, customer, sub_id, lock=True)
     r = db.scalar(select(ServiceRequest).where(ServiceRequest.id == sub.request_id).with_for_update())
-    refund_paise = 0
-    if sub.status == "active" and p and p.status == "PAID":
-        s = settings_svc.load(db)
-        first = db.scalar(select(Visit.starts_at).where(Visit.subscription_id == sub.id).order_by(Visit.starts_at).limit(1))
-        if first is None:  # schedule not built yet by the worker: derive the first visit from start date + slot
-            from app.domain import ist_datetime
-            from app.services.bookings import _slot_times
-            first = ist_datetime(sub.start_date, _slot_times(s, sub.slot)[0])
-        try:
-            refund_paise = refund_amount(p.amount_paise, first, now(), full_refund_before_hours=s.float("refund_full_before_h"),
-                                         partial_percent=s.int("refund_partial_pct"))
-        except RefundNotAllowed:
-            raise AppError("REFUND_NOT_ALLOWED", "Cancellation after the first visit is handled by support.", 409) from None
-        if refund_paise:
-            rid = get_gateway().refund(p.gateway_payment_id, refund_paise)
-            db.add(Refund(payment_id=p.id, amount_paise=refund_paise, gateway_refund_id=rid, reason=reason or "Customer cancelled"))
-    elif p:
-        for link in db.scalars(select(PaymentLink).where(PaymentLink.payment_id == p.id, PaymentLink.status == "active")):
-            link.status = "cancelled"
-            get_gateway().cancel_link(link.gateway_link_id)
+    refund_paise = refund_quote(db, sub, p, now())
+    if refund_paise:
+        # Requested from the gateway and tracked as "requested": the payment becomes REFUNDED / PARTIALLY_REFUNDED only
+        # when the gateway confirms it (refund.processed). The subscription row lock above stops a second request.
+        rid = get_gateway().refund(p.gateway_payment_id, refund_paise)
+        db.add(Refund(payment_id=p.id, amount_paise=refund_paise, gateway_refund_id=rid, reason=reason or "Customer cancelled"))
+    elif sub.status == "pending_payment":
+        cancel_unpaid_order(db, sub, now())
     sub.status, sub.cancelled_at = "cancelled", now()
     for v in db.scalars(select(Visit).where(Visit.subscription_id == sub.id, Visit.status.in_(("pending_assignment", "needs_manual_assignment", "scheduled")))):
         v.status, v.cancelled_at = "cancelled", now()
@@ -278,19 +370,27 @@ def expire_links_and_close_unpaid(db: Session) -> tuple[int, int]:
         p = db.get(Payment, link.payment_id)
         notify(db, "payment_link_expired", p.customer_id, "Payment link expired", "Generate a fresh link from the app to subscribe.",
                f"/customer/payment/{p.id}")
+    db.commit()
     closed = 0
     cutoff = t - timedelta(days=s.int("unpaid_close_days"))
     from app.services.bookings import move
-    for r in db.scalars(select(ServiceRequest).where(ServiceRequest.stage == "subscription_requested",
-                                                     ServiceRequest.subscription_requested_at < cutoff).with_for_update(skip_locked=True)):
+    due = db.scalars(select(ServiceRequest.id).where(ServiceRequest.stage == "subscription_requested",
+                                                     ServiceRequest.subscription_requested_at < cutoff)).all()
+    for rid in due:
+        # Same lock order as a payment confirmation (payment, then request), and re-checked under the locks: a payment
+        # landing at this moment either wins (the card has moved to payment_done) or then finds its link cancelled and
+        # is refunded. Safe to run repeatedly: a closed card no longer matches.
+        pay = db.scalar(select(Payment).join(Subscription, Subscription.id == Payment.subscription_id)
+                        .where(Subscription.request_id == rid).with_for_update(of=Payment))
+        r = db.scalar(select(ServiceRequest).where(ServiceRequest.id == rid).with_for_update())
+        if r.stage != "subscription_requested" or (pay is not None and pay.status not in ("CREATED", "FAILED")):
+            db.commit()
+            continue
         move(db, r, board.Stage.CLOSED, "system", SYSTEM, "Unpaid for 7 days")
         r.closed_reason = "Not paid within the time limit"
         sub = db.scalar(select(Subscription).where(Subscription.request_id == r.id))
-        if sub and sub.status == "pending_payment":
-            sub.status, sub.cancelled_at = "cancelled", t
-            p = db.scalar(select(Payment).where(Payment.subscription_id == sub.id))
-            for link in db.scalars(select(PaymentLink).where(PaymentLink.payment_id == p.id, PaymentLink.status == "active")):
-                link.status = "cancelled"
+        if sub:
+            cancel_unpaid_order(db, sub, t)
         closed += 1
-    db.commit()
+        db.commit()
     return expired, closed

@@ -1,4 +1,6 @@
+import os
 from functools import cached_property
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,7 +9,13 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "Delco Chefs API"
     VERSION: str = "1.0.0"
-    GIT_COMMIT: str = "dev"
+    # Set by CI (docker build arg); on Render the runtime variable RENDER_GIT_COMMIT is used when GIT_COMMIT is unset.
+    GIT_COMMIT: str = ""
+
+    @field_validator("GIT_COMMIT")
+    @classmethod
+    def _commit(cls, v: str) -> str:
+        return v or os.environ.get("RENDER_GIT_COMMIT", "")[:12] or "dev"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"  # development | test | production
     DEBUG: bool = False
@@ -35,6 +43,12 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     OTP_PROVIDER: str = "log"  # log | (future: msg91, twilio…)
+    # The mock "log" provider writes the code to the server log outside production. In production it does not, unless
+    # this is set to true: a deliberate switch for a demo deployment with no SMS provider (read codes in the host's log).
+    OTP_LOG_CODES: bool = False
+    # Optional: also append logs to this file (relative paths resolve from the backend folder), e.g. server.log.
+    # Ignored when ENVIRONMENT=test.
+    LOG_FILE: str | None = None
 
     # Razorpay test mode. When absent, development uses the local sandbox gateway.
     RAZORPAY_KEY_ID: str | None = None
@@ -50,6 +64,10 @@ class Settings(BaseSettings):
     @cached_property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @cached_property
+    def otp_codes_in_log(self) -> bool:
+        return not self.is_production or self.OTP_LOG_CODES
 
     @cached_property
     def sqlalchemy_url(self) -> str:

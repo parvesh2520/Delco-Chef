@@ -1,20 +1,31 @@
-# Render free web service (sleeps when idle; first request after sleep is slow). Database: Neon.
+# Render Blueprint for the Delco Chefs API (Docker). Database: Neon (not managed by Render).
+# Free plan: the service sleeps after ~15 min idle; the first request after that takes ~1 min. See
+# docs/RENDER_DEPLOYMENT_GUIDE.md for every variable, the migration procedure and the Razorpay webhook setup.
 services:
   - type: web
     name: delco-chefs-api
     runtime: docker
     rootDir: backend
+    dockerfilePath: ./Dockerfile
+    region: singapore          # same region as the Neon database (ap-southeast-1)
     plan: free
-    healthCheckPath: /health
-    autoDeploy: false   # CI triggers the deploy hook after tests pass
+    healthCheckPath: /health   # 200 only when PostgreSQL answers
+    autoDeploy: false          # deploy from the dashboard, or via CI's deploy hook after tests pass
     envVars:
       - { key: ENVIRONMENT, value: production }
-      - { key: DATABASE_URL, sync: false }
-      - { key: DIRECT_URL, sync: false }
+      - { key: DEBUG, value: "false" }
+      - { key: RUN_WORKERS, value: "true" }       # in-process jobs: keep exactly one instance
+      - { key: RUN_MIGRATIONS, value: "false" }   # migrations are run deliberately (see the guide)
+      - { key: DB_POOL_SIZE, value: "3" }         # ≤ 5 connections from one small instance
+      - { key: DB_MAX_OVERFLOW, value: "2" }
+      - { key: OTP_PROVIDER, value: log }
+      - { key: OTP_LOG_CODES, value: "true" }     # demo only: OTP codes appear in Render's logs. Set false with a real SMS provider.
+      - { key: DATABASE_URL, sync: false }        # Neon pooled URL
+      - { key: DIRECT_URL, sync: false }          # Neon direct URL (migrations)
       - { key: SECRET_KEY, generateValue: true }
-      - { key: FIELD_ENCRYPTION_KEY, sync: false }
-      - { key: HMAC_LOOKUP_KEY, sync: false }
-      - { key: PUBLIC_BASE_URL, sync: false }
+      - { key: FIELD_ENCRYPTION_KEY, sync: false }  # MUST equal the key that encrypted the existing Neon data
+      - { key: HMAC_LOOKUP_KEY, sync: false }       # MUST equal the key used for the existing phone lookups
+      - { key: PUBLIC_BASE_URL, sync: false }       # https://<service>.onrender.com
       - { key: RAZORPAY_KEY_ID, sync: false }
       - { key: RAZORPAY_KEY_SECRET, sync: false }
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }

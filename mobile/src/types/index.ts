@@ -277,6 +277,41 @@ export interface Payment {
   gatewayStatus?: 'CREATED' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
   refundedAmount?: number;
   failureReason?: string;
+  subscriptionStatus?: SubscriptionStatus;
+  /** Refunds as the server tracks them: "requested" until the gateway confirms ("processed") or reports "failed". */
+  refunds?: PaymentRefund[];
+  /** Every link of the order, newest first. Admin views only. */
+  links?: PaymentLinkHistory[];
+}
+
+export interface PaymentRefund {
+  id: string;
+  amount: number;
+  amountPaise: number;
+  status: 'requested' | 'processed' | 'failed' | 'flagged';
+  reason: string;
+  requestedAt: string;
+  confirmedAt?: string | null;
+}
+
+export interface PaymentLinkHistory {
+  id: string;
+  status: 'active' | 'paid' | 'expired' | 'replaced' | 'cancelled';
+  amount: number;
+  createdAt: string;
+  expiresAt: string;
+  replacedAt?: string | null;
+}
+
+/** What cancelling now would refund, computed by the server (F5). */
+export interface CancelPreview {
+  subscriptionId: string;
+  paid: boolean;
+  amountPaid: number;
+  refundPaise: number;
+  refundAmount: number;
+  fullRefund: boolean;
+  firstVisitAt: string | null;
 }
 
 // ---------- Chefs ----------

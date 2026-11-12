@@ -1,0 +1,16 @@
+# Keep secrets, local environments and generated files out of the image (COPY . . in the Dockerfile).
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+media/
+*.log
+Dockerfile
+.dockerignore

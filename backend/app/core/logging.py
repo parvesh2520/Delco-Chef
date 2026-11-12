@@ -6,12 +6,15 @@ import re
 import sys
 import time
 import uuid
+from pathlib import Path
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 _PATTERNS = [
+    # Database URLs in connection errors: keep the scheme and host, drop the user and password.
+    (re.compile(r"(postgres(?:ql)?(?:\+\w+)?://)[^@\s/]+@"), r"\1***@"),
     (re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)"), "[PHONE]"),
     (re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]+"), "Bearer [TOKEN]"),
     (re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"), "[JWT]"),
@@ -38,16 +41,22 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, ensure_ascii=False)
 
 
-def setup_logging(level: str = "INFO") -> None:
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter())
+def setup_logging(level: str = "INFO", log_file: str | None = None) -> None:
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    if log_file:
+        path = Path(log_file)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[2] / path  # the backend folder
+        handlers.append(logging.FileHandler(path, encoding="utf-8"))
+    for h in handlers:
+        h.setFormatter(JsonFormatter())
     root = logging.getLogger()
-    root.handlers[:] = [handler]
+    root.handlers[:] = handlers
     root.setLevel(level)
     # Uvicorn access logs include query strings; route them through the same redacting formatter.
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         lg = logging.getLogger(name)
-        lg.handlers[:] = [handler]
+        lg.handlers[:] = handlers
         lg.propagate = False
 
 

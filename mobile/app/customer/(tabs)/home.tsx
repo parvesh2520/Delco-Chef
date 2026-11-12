@@ -29,7 +29,7 @@ export default function CustomerHome() {
   const upcoming = (visits.data ?? [])
     .filter((v) => !['completed', 'customer_unavailable'].includes(v.status))
     .sort((a, b) => a.date.localeCompare(b.date))[0];
-  const activeSub = subs.data?.find((s) => s.status === 'active' || s.status === 'pending_payment');
+  const activeSubs = (subs.data ?? []).filter((s) => s.status === 'active' || s.status === 'pending_payment');
   const open = (reqs.data ?? []).filter((r) => r.isOpen);
   const firstName = session?.user.fullName.split(' ')[0] || 'there';
 
@@ -62,16 +62,18 @@ export default function CustomerHome() {
         </Card>
       )}
 
-      {activeSub && (
-        <Section eyebrow="Your plan">
-          <Card onPress={() => router.push({ pathname: '/customer/subscriptions/[id]', params: { id: activeSub.id } })}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Txt variant="h3">{SERVICE_LABELS[activeSub.service]}</Txt>
-              <Badge status={activeSub.status} />
-            </View>
-            <Txt variant="small">{formatDate(activeSub.startDate)} – {formatDate(activeSub.endDate)} · {activeSub.slot}</Txt>
-            {activeSub.status === 'pending_payment' && <Txt variant="small" color={colors.warning}>Complete payment to activate.</Txt>}
-          </Card>
+      {activeSubs.length > 0 && (
+        <Section eyebrow={activeSubs.length > 1 ? 'Your plans' : 'Your plan'}>
+          {activeSubs.map((sub) => (
+            <Card key={sub.id} onPress={() => router.push({ pathname: '/customer/subscriptions/[id]', params: { id: sub.id } })}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Txt variant="h3">{SERVICE_LABELS[sub.service]}</Txt>
+                <Badge status={sub.status} />
+              </View>
+              <Txt variant="small">{formatDate(sub.startDate)} – {formatDate(sub.endDate)} · {sub.slot}</Txt>
+              {sub.status === 'pending_payment' && <Txt variant="small" color={colors.warning}>Complete payment to activate.</Txt>}
+            </Card>
+          ))}
         </Section>
       )}
 

@@ -4,7 +4,11 @@ export const APP_CONFIG = {
   name: 'Delco Chefs',
   tagline: 'Convenience Personified.',
   version: '1.0.0',
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000/api/v1',
+  /**
+   * From EXPO_PUBLIC_API_URL: mobile/.env for local development, eas.json for preview/production builds (EAS does not
+   * upload the git-ignored .env). The emulator fallback applies to development only, never to a release build.
+   */
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://10.0.2.2:8000/api/v1' : ''),
   environment: process.env.EXPO_PUBLIC_APP_ENV || 'development',
   /** Google Maps via react-native-maps. Requires GOOGLE_MAPS_API_KEY at build time (app.config.js). */
   mapsEnabled: process.env.EXPO_PUBLIC_MAPS_ENABLED !== 'false',

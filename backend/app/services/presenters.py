@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.security import decrypt, mask_phone
 from app.domain import IST, parse_hhmm
 from app.models import (Address, Assignment, AttendanceRecord, Chef, ChefBankAccount, ChefDocument, Payment,
-                        PaymentLink, ServiceRequest, Subscription, SubscriptionDay, Trial, User, Visit)
+                        PaymentLink, Refund, ServiceRequest, Subscription, SubscriptionDay, Trial, User, Visit)
 from app.services.settings import Settings
 
 STAGE_TO_STATUS = {
@@ -119,11 +119,17 @@ class Prefetch:
         return pf
 
 
-def trial_json(db: Session, t: Trial, s: Settings, max_trials: int, pf: "Prefetch | None" = None) -> dict:
+def trial_json(db: Session, t: Trial, s: Settings, max_trials: int, pf: "Prefetch | None" = None,
+               request_stage: str | None = None) -> dict:
+    from app.services.bookings import decision_stage
     v = pf.visit_by_trial.get(t.id) if pf else db.scalar(select(Visit).where(Visit.trial_id == t.id))
     cname = (pf.chef_names.get(v.chef_id) if pf else chef_name(db, v.chef_id)) if v and v.chef_id else None
+    if request_stage is None:
+        request_stage = db.get(ServiceRequest, t.request_id).stage
     allowed: list[str] = []
-    if t.status == "completed" and t.decision is None:
+    # Offered only while the card actually waits for this trial's decision: the same rule decide() enforces, so the app
+    # never shows a choice the server would refuse (e.g. after an Admin pushed trial 2, or the card was closed).
+    if t.status == "completed" and t.decision is None and request_stage == decision_stage(t.number):
         allowed = ["subscribe", "another_trial"] if t.number < max_trials else ["subscribe", "reject"]
     status = {"requested": "pending_assignment"}.get(t.status, t.status)
     return {"id": str(t.id), "requestId": str(t.request_id), "service": t.service, "number": t.number, "status": status,
@@ -161,7 +167,7 @@ def request_json(db: Session, r: ServiceRequest, s: Settings, viewer_role: str, 
         "customerPhone": mask_phone(phone_of(cust)) if is_admin else phone_of(cust),
         "service": r.service, "status": status, "stage": r.stage, "isOpen": r.stage not in ("closed", "payment_done"),
         "requirements": requirements_json(r, s), "address": address_json(addr) if viewer_role == "customer" else area_only(addr),
-        "trials": [trial_json(db, t, s, max_trials, pf) for t in trials],
+        "trials": [trial_json(db, t, s, max_trials, pf, r.stage) for t in trials],
         "assignedChefId": str(r.chef_id) if r.chef_id else None,
         "assignedChefName": (pf.chef_names.get(r.chef_id) if pf else chef_name(db, r.chef_id)) if r.chef_id else None,
         "subscriptionId": str(sub_id) if sub_id else None, "createdAt": iso(r.created_at), "closedReason": r.closed_reason,
@@ -292,4 +298,14 @@ def payment_json(db: Session, p: Payment, viewer_role: str) -> dict:
             "linkUrl": link.url if link and link_status == "active" else "", "linkStatus": link_status,
             "linkExpiresAt": iso(link.expires_at) if link else None, "createdAt": iso(p.created_at), "paidAt": iso(p.paid_at),
             "method": p.method, "reference": p.gateway_payment_id, "attempts": p.attempts,
-            "refundedAmount": rupees(p.refunded_paise), "failureReason": p.failure_reason, "gateway": p.gateway}
+            "refundedAmount": rupees(p.refunded_paise), "failureReason": p.failure_reason, "gateway": p.gateway,
+            "subscriptionStatus": sub.status,
+            # Refunds the customer and Admins can follow: "requested" until the gateway confirms ("processed") or fails.
+            "refunds": [{"id": str(rf.id), "amount": rupees(rf.amount_paise), "amountPaise": rf.amount_paise, "status": rf.status,
+                         "reason": rf.reason, "requestedAt": iso(rf.created_at), "confirmedAt": iso(rf.confirmed_at)}
+                        for rf in db.scalars(select(Refund).where(Refund.payment_id == p.id).order_by(Refund.id))],
+            **({"links": [{"id": str(lk.id), "status": "expired" if lk.status == "active" and lk.expires_at <= now else lk.status,
+                           "amount": rupees(lk.amount_paise), "createdAt": iso(lk.created_at), "expiresAt": iso(lk.expires_at),
+                           "replacedAt": iso(lk.replaced_at)}
+                          for lk in db.scalars(select(PaymentLink).where(PaymentLink.payment_id == p.id).order_by(PaymentLink.id.desc()))]}
+               if viewer_role != "customer" else {})}

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, ConfirmDialog, InfoRow, Notice, Screen, Txt } from '../../../src/components';
+import { Badge, Button, Card, ConfirmDialog, InfoRow, Notice, Screen, Section, Txt } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
 import { Row, useAdminInvalidate } from '../../../src/features/admin';
+import { LinkHistory, RefundList } from '../../../src/features/payments';
 import { QueryView } from '../../../src/components';
 import { paymentService } from '../../../src/services';
 import { useToast } from '../../../src/store';
-import { formatCurrency, formatDateTime } from '../../../src/utils';
+import { formatCurrency, formatDateTime, isNetworkError } from '../../../src/utils';
 
 type Action = 'resend' | 'regenerate' | null;
 
@@ -48,16 +49,31 @@ export default function PaymentDetails() {
               <InfoRow label="Method" value={p.method} />
               <InfoRow label="Reference" value={p.reference} />
             </Card>
+            {p.status === 'failed' && !!p.failureReason && <Notice tone="error">Last attempt failed: {p.failureReason}</Notice>}
             {p.status === 'paid' && <Notice tone="success">Paid — the subscription is active.</Notice>}
+            {!!p.refunds?.length && (
+              <Section title={`Refunds · ${formatCurrency(p.refundedAmount ?? 0)} confirmed`}>
+                <RefundList refunds={p.refunds} />
+              </Section>
+            )}
+            {!!p.links?.length && (
+              <Section title="Payment links">
+                <LinkHistory links={p.links} />
+              </Section>
+            )}
             {(p.status === 'link_created' || p.status === 'failed' || p.status === 'pending') && (
               <Button title="Resend payment link" icon="send-outline" onPress={() => setAction('resend')} />
             )}
-            {p.status === 'expired' && (
+            {p.status === 'expired' && p.subscriptionStatus === 'pending_payment' && (
               <>
                 <Notice tone="warning">This link expired. Generate a new one and share it with the customer.</Notice>
                 <Button title="Regenerate link" icon="refresh-outline" onPress={() => setAction('regenerate')} />
               </>
             )}
+            {p.status === 'expired' && p.subscriptionStatus === 'cancelled' && (
+              <Notice>The order was cancelled, so no new link can be generated.</Notice>
+            )}
+            {run.isError && <Notice tone="error">{isNetworkError(run.error) ? 'You’re offline. Nothing was changed.' : run.error.message}</Notice>}
           </>
         )}
       </QueryView>

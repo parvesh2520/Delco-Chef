@@ -8,7 +8,7 @@ import type { PaymentStatus } from '../../../src/types';
 import { humanize } from '../../../src/utils';
 
 type Filter = 'all' | PaymentStatus;
-const FILTERS: Filter[] = ['all', 'link_created', 'pending', 'paid', 'failed', 'expired'];
+const FILTERS: Filter[] = ['all', 'link_created', 'pending', 'paid', 'failed', 'expired', 'refunded', 'partially_refunded'];
 
 export default function PaymentLinks() {
   const [filter, setFilter] = useState<Filter>('all');

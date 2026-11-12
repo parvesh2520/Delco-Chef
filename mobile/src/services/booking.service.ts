@@ -1,7 +1,7 @@
 // Catalogue, requests, trials and subscriptions. Every rule (trial limits, open requests, prices) is enforced by the API.
 import type {
-  BookableService, BookingRequirements, BookingSummary, ServiceOffering, ServiceRequest, ServiceType, Subscription, Trial,
-  TrialDecision,
+  BookableService, BookingRequirements, BookingSummary, CancelPreview, ServiceOffering, ServiceRequest, ServiceType, Subscription,
+  Trial, TrialDecision,
 } from '../types';
 import { api } from './api';
 
@@ -86,8 +86,10 @@ export const bookingService = {
   getSubscription: (id: string) => api.get<Subscription>(`/subscriptions/${id}`),
   getSchedule: (id: string) => api.get<Schedule>(`/subscriptions/${id}/schedule`),
   saveOffDays: (id: string, offDays: string[]) => api.put<Subscription>(`/subscriptions/${id}/off-days`, { days: offDays }),
+  /** The refund the server would give if the customer cancelled now. The app never computes or sends an amount. */
+  getCancelPreview: (id: string) => api.get<CancelPreview>(`/subscriptions/${id}/cancel-preview`),
   cancelSubscription: (id: string, reason?: string) =>
-    api.post<{ refundAmount: number }>(`/subscriptions/${id}/cancel`, { reason }),
+    api.post<{ subscriptionId: string; refundAmount: number; refundPaise: number }>(`/subscriptions/${id}/cancel`, { reason }),
 
   /** Keyset-paginated; the history screen shows the first page and can ask for more. */
   listBookingHistory: () =>

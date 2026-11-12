@@ -57,7 +57,7 @@ Seeded rows have `is_seed = true`. To remove them, run `python -m scripts.seed -
 
 ```bash
 docker run -d --name delco-pg-test -e POSTGRES_USER=delco -e POSTGRES_PASSWORD=delco -e POSTGRES_DB=delco_test -p 55432:5432 postgres:17-alpine
-cd backend && pytest        # 67 tests against real PostgreSQL (refuses to run against Neon)
+cd backend && pytest        # 123 tests against real PostgreSQL (refuses to run against Neon)
 cd mobile && npx tsc --noEmit && npx expo export --platform android
 ```
 Tests cover the acceptance cases in Parts A, B, C, D, E, F, G and H. That includes the Part B ranking table, the 20-way parallel assignment test (exactly one succeeds), all 9 check-in attempts, the webhook cases, the refund rule, the payout cycle and the privacy checks.
@@ -78,11 +78,17 @@ Tests cover the acceptance cases in Parts A, B, C, D, E, F, G and H. That includ
 Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`. Only `rzp_test_…` keys are accepted. Point the Razorpay webhook at `/api/v1/payments/webhook`.
 **Until those keys are set**, development uses a local *sandbox gateway*. It is clearly marked TEST MODE and serves its own checkout page. It sends HMAC-signed webhooks through the same verification path, and it refuses to start in production.
 
-## Deployment
+## Deployment (Render + Neon)
 
-`render.yaml` defines a free Render web service built from `backend/Dockerfile`, using Neon as the database. On start it runs `alembic upgrade head`. CI (`.github/workflows/ci.yml`) runs lint, migration up/down/check, the tests, the mobile typecheck and bundle, and the Docker build. On `main` it then calls the deploy hook.
-**Rollback:** redeploy the previous image. For a schema change that has already run, run `alembic downgrade -1`. Migrations are written to be expand-first, so the previous image keeps working against the expanded schema.
+`render.yaml` is a Render Blueprint: one free Docker web service built from `backend/Dockerfile` in the Singapore region (next to Neon), health-checked on `/health`. The step-by-step setup, every environment variable, the migration procedure, the Razorpay webhook and rollback are in **[docs/RENDER_DEPLOYMENT_GUIDE.md](docs/RENDER_DEPLOYMENT_GUIDE.md)**.
+
+- **Public API:** `https://<service>.onrender.com/api/v1` (the Blueprint names the service `delco-chefs-api`, so normally `https://delco-chefs-api.onrender.com/api/v1`). Health: `/health`. Version and commit: `/version`.
+- **Migrations are not run on start on Render** (`RUN_MIGRATIONS=false`). Run `alembic upgrade head` deliberately against `DIRECT_URL` when a release adds a migration. The local Docker stack still migrates on start.
+- **Razorpay webhook:** `https://<service>.onrender.com/api/v1/payments/webhook`, with `RAZORPAY_WEBHOOK_SECRET` set on Render. Without the secret, every webhook is rejected.
+- **Mobile builds:** EAS preview and production builds take `EXPO_PUBLIC_API_URL` from `mobile/eas.json` (the git-ignored `mobile/.env` is for local development only).
+- **CI** (`.github/workflows/ci.yml`) runs lint, migration up/down/check, the tests, the mobile typecheck and bundle, and the Docker build. On `main` it then calls the Render deploy hook, if `RENDER_DEPLOY_HOOK` is set.
+- **Rollback:** in Render, *Events → a previous deploy → Rollback*. A schema change that already ran is rolled back with `alembic downgrade -1`; migrations are expand-first, so the previous image keeps working against the expanded schema.
 
 ## Known gaps
 
-See the final report in the PR / handover notes: Razorpay keys, the Google Maps key, push notifications (FCM/Expo push token), real SMS, object storage (photos are on local disk), Redis for running more than one instance, the after-optimisation k6 latency run, deployment, and the design-note PDF/ERD image.
+See the final report in the PR / handover notes: Razorpay keys, the Google Maps key, push notifications (FCM/Expo push token), real SMS, object storage (photos are on local disk, which Render's free plan wipes on every deploy), Redis for running more than one instance, the after-optimisation k6 latency run, and the design-note PDF/ERD image.

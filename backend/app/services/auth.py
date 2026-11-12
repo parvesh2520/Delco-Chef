@@ -40,13 +40,14 @@ def normalize_phone(raw: str) -> str:
 
 # ---------------- OTP delivery (provider interface) ----------------
 class LogOtpProvider:
-    """Mock SMS provider (assignment §3.1). The code is written to the server log in development only."""
+    """Mock SMS provider (assignment §3.1). The code is written to the server log outside production, or in production
+    only when OTP_LOG_CODES=true (demo deployments without an SMS provider)."""
 
     def send(self, phone: str, code: str) -> None:
-        if settings.is_production:
-            log.warning("OTP issued for %s via log provider; configure a real SMS provider", security.mask_phone(phone))
-        else:
+        if settings.otp_codes_in_log:
             log.info("DEV OTP for %s: %s (valid 5 min)", security.mask_phone(phone), code, extra={"allow_secret": True})
+        else:
+            log.warning("OTP issued for %s via log provider; configure a real SMS provider", security.mask_phone(phone))
 
 
 OTP_PROVIDERS = {"log": LogOtpProvider}

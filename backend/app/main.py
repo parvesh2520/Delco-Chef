@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.logging import RequestContextMiddleware, setup_logging
 
-setup_logging("DEBUG" if settings.DEBUG else "INFO")
+setup_logging("DEBUG" if settings.DEBUG else "INFO", None if settings.ENVIRONMENT == "test" else settings.LOG_FILE)
 settings.validate_production()
 log = logging.getLogger("app")
 

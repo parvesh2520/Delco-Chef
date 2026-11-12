@@ -251,6 +251,11 @@ def off_days(sub_id: int, body: DaysIn, p: Principal = Depends(customer_only), d
     return subscription_json(db, sub, settings_svc.load(db))
 
 
+@router.get("/subscriptions/{sub_id}/cancel-preview", summary="Refund the customer would get if they cancelled now (F5)")
+def cancel_preview(sub_id: int, p: Principal = Depends(customer_only), db: Session = Depends(get_db)):
+    return payments.cancellation_preview(db, p.user, sub_id)
+
+
 @router.post("/subscriptions/{sub_id}/cancel", summary="Cancel; refund per the 2-hour rule (F5)")
 def cancel_subscription(sub_id: int, body: ReasonIn, p: Principal = Depends(customer_only), db: Session = Depends(get_db)):
     return payments.cancel_subscription(db, p.user, sub_id, body.reason)
