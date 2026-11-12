@@ -6,5 +6,5 @@ import { homeFor, useSession } from '../../src/navigation';
 export default function AuthLayout() {
   const session = useSession();
   if (session) return <Redirect href={homeFor(session)} />;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', animationDuration: 260 }} />;
 }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { FadeInUp, PressableScale } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, radius } from '../theme';
 import { Txt } from './Txt';
@@ -29,20 +30,23 @@ export function Button({ title, onPress, variant = 'primary', icon, loading, dis
   const p = palette[variant];
   const inactive = disabled || loading;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       onPress={onPress}
       disabled={inactive}
+      to={small ? 0.94 : 0.97}
       style={({ pressed }) => [
         styles.base,
         small && styles.small,
-        { backgroundColor: p.bg, borderColor: p.border, opacity: inactive ? 0.45 : pressed ? 0.85 : 1 },
+        { backgroundColor: p.bg, borderColor: p.border, opacity: disabled ? 0.45 : pressed ? 0.9 : 1 },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={p.fg} />
+        <FadeInUp distance={4}>
+          <ActivityIndicator color={p.fg} />
+        </FadeInUp>
       ) : (
         <View style={styles.row}>
           {icon && <Ionicons name={icon} size={small ? 16 : 18} color={p.fg} />}
@@ -51,7 +55,7 @@ export function Button({ title, onPress, variant = 'primary', icon, loading, dis
           </Txt>
         </View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 

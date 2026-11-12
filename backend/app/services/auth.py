@@ -195,6 +195,10 @@ def list_sessions(db: Session, user_id: int, current_sid: str) -> list[dict]:
             for sid, c, la, d in rows]
 
 
+def session_active_clause(session_id: str):
+    """SQL boolean: the session still has an unrevoked refresh token (usable inside a larger query)."""
+    return select(RefreshToken.id).where(RefreshToken.session_id == session_id, RefreshToken.revoked_at.is_(None)).exists()
+
+
 def session_active(db: Session, session_id: str) -> bool:
-    return db.scalar(select(func.count()).select_from(RefreshToken).where(
-        RefreshToken.session_id == session_id, RefreshToken.revoked_at.is_(None))) > 0
+    return bool(db.scalar(select(session_active_clause(session_id))))

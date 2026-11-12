@@ -52,3 +52,7 @@ export const toneColors: Record<Tone, { fg: string; bg: string }> = {
 
 export const isNetworkError = (e: unknown): boolean =>
   !!e && typeof e === 'object' && 'isAxiosError' in e && !(e as { response?: unknown }).response;
+
+/** Same bounding box as the server (backend/app/domain/geo.py): latitude and longitude must be within India (A9). */
+export const isWithinIndia = (lat: number, lng: number): boolean =>
+  Number.isFinite(lat) && Number.isFinite(lng) && lat >= 6.5 && lat <= 37.2 && lng >= 68.0 && lng <= 97.5;

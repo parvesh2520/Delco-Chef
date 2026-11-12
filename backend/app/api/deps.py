@@ -40,10 +40,11 @@ def current(request: Request, db: Session = Depends(get_db)) -> Principal:
         raise AppError("TOKEN_EXPIRED", "Session expired.", 401) from None
     except jwt.PyJWTError:
         raise AppError("UNAUTHENTICATED", "Invalid session.", 401) from None
-    user = db.get(User, int(payload["sub"]))
+    row = db.execute(select(User, auth_svc.session_active_clause(payload["sid"])).where(User.id == int(payload["sub"]))).first()
+    user, live = (row[0], row[1]) if row else (None, False)
     if not user or user.status != "active" or user.role != payload.get("role"):
         raise AppError("UNAUTHENTICATED", "Invalid session.", 401)
-    if not auth_svc.session_active(db, payload["sid"]):
+    if not live:
         raise AppError("SESSION_REVOKED", "You have been signed out.", 401)
     return Principal(user, payload["sid"])
 

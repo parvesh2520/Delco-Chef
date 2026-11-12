@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { haptic, PressableScale, PulseDot, useLoop } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing } from '../theme';
 import { humanize, statusTone, toneColors, type Tone } from '../utils';
@@ -23,20 +24,44 @@ export interface CardProps {
 }
 
 export function Card({ children, onPress, tone = 'default', style, accessibilityLabel }: CardProps) {
-  const s = [styles.card, toneStyle[tone], style];
-  if (!onPress) return <View style={s}>{children}</View>;
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({ pressed }) => [s, pressed && { opacity: 0.9 }]}>
+  const s = [styles.card, toneStyle[tone], tone === 'plum' && { overflow: 'hidden' as const }, style];
+  const body = (
+    <>
+      {tone === 'plum' && <Sheen />}
       {children}
-    </Pressable>
+    </>
+  );
+  if (!onPress) return <View style={s}>{body}</View>;
+  return (
+    <PressableScale onPress={onPress} to={0.98} feedback="select" accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={s}>
+      {body}
+    </PressableScale>
   );
 }
+
+/** Slow diagonal light sweep across the plum hero cards. */
+function Sheen() {
+  const v = useLoop(5200);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.sheen,
+        { transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [-220, 420] }) }, { rotate: '18deg' }] },
+      ]}
+    />
+  );
+}
+
+const LIVE = ['in_progress', 'travelling', 'cooking', 'arrived', 'checked_in'];
 
 /** Rounded status pill; tone inferred from status keywords unless given. */
 export function Badge({ status, label, tone }: { status?: string; label?: string; tone?: Tone }) {
   const t = toneColors[tone ?? statusTone(status ?? '')];
+  const live = !!status && LIVE.some((k) => status.includes(k));
   return (
-    <View style={[styles.badge, { backgroundColor: t.bg }]}>
+    <View style={[styles.badge, { backgroundColor: t.bg }, live && styles.badgeLive]}>
+      {live && <PulseDot color={t.fg} size={6} />}
       <Txt variant="caption" color={t.fg} style={{ fontWeight: '700' }}>
         {label ?? humanize(status ?? '')}
       </Txt>
@@ -56,7 +81,7 @@ export interface ListRowProps {
 /** Tappable row with leading icon and chevron — for menus and lists. */
 export function ListRow({ title, subtitle, icon, right, onPress, danger }: ListRowProps) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.sand }]}>
+    <Pressable onPress={onPress && (() => (haptic.select(), onPress()))} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.sand }]}>
       {icon && (
         <View style={[styles.rowIcon, danger && { backgroundColor: colors.errorLight }]}>
           <Ionicons name={icon} size={18} color={danger ? colors.error : colors.purple} />
@@ -88,6 +113,8 @@ export function ListGroup({ children }: { children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.md, gap: spacing.sm, ...shadow },
+  badgeLive: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 4 },
+  sheen: { position: 'absolute', top: -60, bottom: -60, width: 70, backgroundColor: 'rgba(255,248,239,0.07)' },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.md, paddingVertical: 14 },
   rowIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },

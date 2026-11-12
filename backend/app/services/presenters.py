@@ -87,10 +87,12 @@ def requirements_json(r: ServiceRequest, s: Settings) -> dict:
 class Prefetch:
     """Batch-loads everything request_json needs for a page of requests (avoids N+1: 300+ queries → 7)."""
 
-    def __init__(self, db: Session, rows: list[ServiceRequest]):
+    def __init__(self, db: Session, rows: list[ServiceRequest], *, customer: User | None = None):
+        """`customer`: a customer's own list. Their user row is already loaded and off-day conflicts are admin-only."""
         from app.models import ChefOffDay
         ids = [r.id for r in rows]
-        self.users = {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.customer_id for r in rows})))}
+        self.users = ({customer.id: customer} if customer else
+                      {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.customer_id for r in rows})))})
         self.addresses = {a.id: a for a in db.scalars(select(Address).where(Address.id.in_({r.address_id for r in rows})))}
         self.trials: dict[int, list[Trial]] = {}
         for t in db.scalars(select(Trial).where(Trial.request_id.in_(ids)).order_by(Trial.number, Trial.id)):
@@ -103,7 +105,18 @@ class Prefetch:
                                           .where(Chef.id.in_(chef_ids))).all()) if chef_ids else {}
         self.conflicts = set(db.scalars(select(Visit.request_id).join(
             ChefOffDay, (Visit.chef_id == ChefOffDay.chef_id) & (Visit.service_date == ChefOffDay.day)).where(
-            Visit.request_id.in_(ids), Visit.status.in_(("scheduled", "pending_assignment"))))) if ids else set()
+            Visit.request_id.in_(ids), Visit.status.in_(("scheduled", "pending_assignment"))))) if ids and not customer else set()
+
+    @classmethod
+    def for_trials(cls, db: Session, trials: list[Trial]) -> "Prefetch":
+        """Only what trial_json needs (the trial visits and their chefs' names), in two queries for any number of trials."""
+        pf = cls.__new__(cls)
+        ids = [t.id for t in trials]
+        pf.visit_by_trial = {v.trial_id: v for v in db.scalars(select(Visit).where(Visit.trial_id.in_(ids)))} if ids else {}
+        chef_ids = {v.chef_id for v in pf.visit_by_trial.values() if v.chef_id}
+        pf.chef_names = dict(db.execute(select(Chef.id, User.full_name).join(User, User.id == Chef.user_id)
+                                        .where(Chef.id.in_(chef_ids))).all()) if chef_ids else {}
+        return pf
 
 
 def trial_json(db: Session, t: Trial, s: Settings, max_trials: int, pf: "Prefetch | None" = None) -> dict:
@@ -162,7 +175,7 @@ def subscription_json(db: Session, sub: Subscription, s: Settings) -> dict:
     days = db.scalars(select(SubscriptionDay).where(SubscriptionDay.subscription_id == sub.id)).all()
     pay = db.scalar(select(Payment).where(Payment.subscription_id == sub.id))
     from app.services import subscriptions as subs
-    sched = subs.schedule_for(db, sub)
+    sched = subs.schedule_for(db, sub, days)
     return {"id": str(sub.id), "requestId": str(sub.request_id), "service": sub.service, "status": sub.status,
             "chefName": chef_name(db, sub.chef_id), "startDate": iso(sub.start_date), "endDate": iso(sched.end_date),
             "plannedEndDate": iso(sub.end_date), "slot": slot_label(sub.slot, s), "slotCode": sub.slot, "meals": sub.meals,

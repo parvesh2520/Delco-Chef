@@ -19,7 +19,7 @@ export default function OnboardingComplete() {
   return (
     <Screen back={false} footer={<Button title="Start exploring" variant="accent" icon="arrow-forward" loading={finish.isPending} onPress={() => finish.mutate()} />}>
       <StepProgress step={4} total={4} label="Done" />
-      <StatusHero icon="sparkles-outline" title="You’re all set!" message="Book a free trial and Delco will assign a verified chef for your kitchen." />
+      <StatusHero celebrate icon="sparkles-outline" title="You’re all set!" message="Book a free trial and Delco will assign a verified chef for your kitchen." />
       {finish.isError && <Notice tone="error">{finish.error.message}</Notice>}
     </Screen>
   );

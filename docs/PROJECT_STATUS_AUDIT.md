@@ -583,3 +583,13 @@ Each task lists: **what** → **why / PDF item** → **files** → **dependencie
 ### Stretch (only after everything above)
 
 A13 sessions UI, B10 auto-assign, C10 complaints, E7 marker animation, F8 reconciliation, G4 CSV statement.
+
+---
+
+## Update 2026-11-12: A5–A8 customer features
+
+- **A5:** language + dietary preference in onboarding profile and Account settings. Allowed languages are defined once in `backend/app/services/accounts.py` (`LANGUAGES`, same list as chef registration), validated on `PATCH /customers/me`, and served to the app via `GET /config` `languages`.
+- **A6:** "Notify me" on coming-soon cards and screens (`POST /services/{type}/interest`, idempotent, returns `alreadyRegistered`). `GET /services` now returns `interested` per coming-soon service. Subscription cards show trial status and the unavailable reason.
+- **A7:** explicit allergy Yes/No (Yes requires details); Custom Time picks an exact end date (7–90 days, both ends counted) and sends `endDate`; instructions capped at 300; the form pre-fills diet, cuisines and allergies from the profile.
+- **A8:** landmark field, address search via the device geocoder (`expo-location`, needs location permission, no Maps key), required pin, client-side India bounds (same box as `domain/geo.py`), 3-address cap in the UI.
+- **Still needs configuration:** the interactive Google Map (tap/drag the pin) needs `GOOGLE_MAPS_API_KEY` at build time (`app.config.js`), `EXPO_PUBLIC_MAPS_ENABLED` not set to `false`, and a development/EAS build (not Expo Go). Without it the map picker shows a static preview; search and "Use my current location" still set the pin. Places Autocomplete is not used.

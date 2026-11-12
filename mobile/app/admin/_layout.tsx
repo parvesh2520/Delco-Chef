@@ -6,5 +6,5 @@ import { useRoleGuard } from '../../src/navigation';
 export default function AdminLayout() {
   const guard = useRoleGuard(['ops_admin', 'super_admin']);
   if (guard) return guard;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', animationDuration: 260 }} />;
 }

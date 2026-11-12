@@ -7,6 +7,7 @@ import { useFonts, Calistoga_400Regular } from '@expo-google-fonts/calistoga';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { authService, queryClient } from '../src/services';
 import { ToastHost } from '../src/components';
+import { CelebrationHost } from '../src/motion';
 import { colors } from '../src/theme';
 
 export default function RootLayout() {
@@ -37,7 +38,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade', animationDuration: 220 }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(common)" />
@@ -46,6 +47,7 @@ export default function RootLayout() {
         <Stack.Screen name="admin" />
       </Stack>
       <ToastHost />
+      <CelebrationHost />
     </QueryClientProvider>
   );
 }

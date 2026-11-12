@@ -21,6 +21,7 @@ from app.domain import ist_datetime, ist_today  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (Address, Chef, ChefOffDay, ChefSkill, CustomerProfile, User)  # noqa: E402
 from app.services import auth as auth_svc, tracking  # noqa: E402
+from app.services import settings as settings_cache  # noqa: E402
 from app.services.worker import deliver_outbox  # noqa: E402
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -41,6 +42,7 @@ def _schema():
 @pytest.fixture(autouse=True)
 def _clean():
     clock.frozen = None
+    settings_cache.invalidate()  # tables are truncated below, outside save_section()
     tracking._buffer.clear(), tracking._last.clear(), tracking._owner.clear()
     tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
     with engine.begin() as c:

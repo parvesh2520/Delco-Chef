@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, MapPreview, Notice, QueryView, Screen, StatusHero, Txt } from '../../../../src/components';
+import { Button, Card, MapPreview, Notice, QueryView, RollingNumber, Screen, StatusHero, Txt } from '../../../../src/components';
 import { visitService } from '../../../../src/services';
 import { formatTime } from '../../../../src/utils';
 import { colors } from '../../../../src/theme';
@@ -20,7 +20,11 @@ export default function TrackChef() {
               <MapPreview destination={t.destination} chef={t.chefLocation} height={320} label="Chef location relative to your home" />
               <Card tone="plum" onPress={() => router.push({ pathname: '/customer/visit/[id]/eta', params: { id } })}>
                 <Txt variant="eyebrow">Arriving in</Txt>
-                <Txt variant="h1" color={colors.textOnDark}>{t.etaMinutes != null ? `${t.etaMinutes} min` : '—'}</Txt>
+                {t.etaMinutes != null ? (
+                  <RollingNumber variant="h1" color={colors.textOnDark} value={t.etaMinutes} format={(n) => `${Math.round(n)} min`} />
+                ) : (
+                  <Txt variant="h1" color={colors.textOnDark}>—</Txt>
+                )}
                 <Txt variant="small" color={colors.accentLight}>{t.distanceKm != null ? `${t.distanceKm} km away · ` : ''}updated {formatTime(t.updatedAt)}</Txt>
               </Card>
               <View style={{ gap: 8 }}>

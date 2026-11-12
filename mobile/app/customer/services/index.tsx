@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, Card, QueryView, Screen, Txt } from '../../../src/components';
-import { SERVICE_ICONS } from '../../../src/features/bookings';
+import { NotifyMeButton, SERVICE_ICONS, ServiceStatus } from '../../../src/features/bookings';
 import { bookingService } from '../../../src/services';
 import { colors } from '../../../src/theme';
 import { formatCurrency } from '../../../src/utils';
@@ -30,6 +30,8 @@ export default function Services() {
               {s.available && s.priceFrom !== undefined && (
                 <Txt variant="bodyStrong">From {formatCurrency(s.priceFrom)} {s.priceUnit}</Txt>
               )}
+              {s.available && s.eligibility && <ServiceStatus e={s.eligibility} />}
+              {!s.available && <View style={{ alignSelf: 'flex-start' }}><NotifyMeButton s={s} small /></View>}
             </Card>
           ))
         }

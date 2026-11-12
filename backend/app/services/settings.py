@@ -1,4 +1,5 @@
 """Business settings (J3: changeable without a release). Defaults live here; overrides in system_settings."""
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -84,8 +85,25 @@ class Settings:
         return self.raw(key) in ("1", "true", "True", "on")
 
 
-def load(db: Session) -> Settings:
-    return Settings({s.key: s.value for s in db.scalars(select(SystemSetting))})
+# Settings are read by almost every request but change rarely (admin Settings screen). Cache them per process.
+# save_section() reads fresh and invalidates, so this process sees a change at once; others within CACHE_SECONDS.
+CACHE_SECONDS = 30
+_cache: tuple[float, dict[str, str]] | None = None
+
+
+def invalidate() -> None:
+    global _cache
+    _cache = None
+
+
+def load(db: Session, *, fresh: bool = False) -> Settings:
+    global _cache
+    if not fresh and _cache and time.monotonic() - _cache[0] < CACHE_SECONDS:
+        return Settings(_cache[1])
+    values = {s.key: s.value for s in db.scalars(select(SystemSetting))}
+    if not fresh:
+        _cache = (time.monotonic(), values)
+    return Settings(values)
 
 
 def sections(db: Session) -> list[dict]:
@@ -124,7 +142,8 @@ def save_section(db: Session, section_key: str, values: dict[str, str], user_id:
     section = next((s for s in SECTIONS if s["key"] == section_key), None)
     if not section:
         raise AppError("SETTINGS_UNKNOWN_SECTION", "Unknown settings section.", 404)
-    cur = load(db)
+    invalidate()
+    cur = load(db, fresh=True)
     changes = []
     for f in section["fields"]:
         if f.key in values:
@@ -134,10 +153,11 @@ def save_section(db: Session, section_key: str, values: dict[str, str], user_id:
                 db.execute(insert(SystemSetting).values(key=f.key, value=new, updated_by=user_id)
                            .on_conflict_do_update(index_elements=["key"], set_={"value": new, "updated_by": user_id}))
     if section_key == "ranking":
-        w = load(db)
+        w = load(db, fresh=True)
         total = w.float("w_rating") + w.float("w_distance") + w.float("w_workload")
         if abs(total - 1) > 0.001:
             raise AppError("SETTING_WEIGHTS_SUM", "Ranking weights must add up to 1.", 422)
+    invalidate()
     return changes
 
 

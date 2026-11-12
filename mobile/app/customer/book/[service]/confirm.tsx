@@ -5,6 +5,7 @@ import { Button, Card, InfoRow, Notice, Screen, StepProgress, Txt } from '../../
 import { SERVICE_LABELS } from '../../../../src/constants';
 import { BookingGate, RequirementsCard } from '../../../../src/features/bookings';
 import { bookingService, customerService } from '../../../../src/services';
+import { useCelebrate } from '../../../../src/motion';
 import { useBookingDraft, useToast } from '../../../../src/store';
 import type { BookableService, BookingRequirements } from '../../../../src/types';
 
@@ -21,19 +22,21 @@ function Review({ service }: { service: BookableService }) {
   const address = addresses.data?.find((a) => a.id === draft.addressId);
   const complete =
     !!draft.meals?.length && !!draft.slot && !!draft.startDate && !!draft.addressId && !!draft.diet && !!draft.cuisines?.length &&
-    (service !== 'custom_time' || !!draft.durationDays);
+    draft.hasAllergies !== undefined && (!draft.hasAllergies || !!draft.allergyNotes?.trim()) &&
+    (service !== 'custom_time' || (!!draft.endDate && !!draft.weekdays?.length));
 
   const submit = useMutation({
     mutationFn: () => {
-      const { service: _s, ...rest } = draft;
+      const { service: _s, durationDays: _d, ...rest } = draft;
       return bookingService.createRequest(service, { members: 2, allergies: [], ...rest } as BookingRequirements);
     },
     onSuccess: (req) => {
       if (router.canDismiss()) router.dismissAll();
       router.push({ pathname: '/customer/trials/request/[id]', params: { id: req.id } });
       useToast.getState().show('Trial request submitted');
+      useCelebrate.getState().celebrate();
       reset();
-      ['requests', 'eligibility', 'history', 'trials'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ['requests', 'eligibility', 'history', 'trials', 'services', 'profile'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     },
   });
 
@@ -44,7 +47,7 @@ function Review({ service }: { service: BookableService }) {
       subtitle="Check the details before sending your free trial request."
       footer={
         complete ? (
-          <Button title="Confirm & request trial" variant="accent" loading={submit.isPending} onPress={() => submit.mutate()} />
+          <Button title="Confirm & request trial" variant="accent" loading={submit.isPending} disabled={submit.isPending || submit.isSuccess} onPress={() => !submit.isPending && !submit.isSuccess && submit.mutate()} />
         ) : (
           <Button title="Complete missing details" onPress={() => router.push({ pathname: '/customer/book/[service]/requirements', params: { service } })} />
         )

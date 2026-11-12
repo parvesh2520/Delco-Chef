@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, LoadingState, Notice, QueryView, Screen, StatusHero, Txt } from '../../../src/components';
 import { isBookable } from '../../../src/constants';
+import { NotifyMeButton, ServiceStatus } from '../../../src/features/bookings';
 import { bookingService } from '../../../src/services';
 import { useBookingDraft } from '../../../src/store';
 import { colors } from '../../../src/theme';
@@ -33,6 +34,7 @@ function ComingSoon({ s }: { s: ServiceOffering }) {
   return (
     <Screen>
       <StatusHero tone="info" icon="hourglass-outline" title={`${s.name} is coming soon`} message={s.description}>
+        <NotifyMeButton s={s} />
         <Notice>Right now you can book Monthly Subscription or Custom Time.</Notice>
         <Button title="Explore available services" onPress={() => router.replace('/customer/services')} />
       </StatusHero>
@@ -86,6 +88,7 @@ function BookableDetails({ s, service }: { s: ServiceOffering; service: Bookable
             <Txt variant="label">Free trials for this service</Txt>
             <Txt variant="h2">{e.trialsUsed} of {e.maxTrials} used</Txt>
             <Txt variant="small">Trial limits apply separately to each service.</Txt>
+            <ServiceStatus e={e} />
           </Card>
           {!e.canRequest && e.openRequestId && (
             <>

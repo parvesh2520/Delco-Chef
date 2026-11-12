@@ -7,13 +7,31 @@ import { api } from './api';
 
 type Page<T> = { items: T[]; nextCursor: string | null };
 
+/** GET /admin/stage-summary (C9). Every number comes from the server. */
+export interface StageSummary {
+  stages: { requested: number; assigned: number; trialDone: number; subscriptionRequested: number; paid: number };
+  conversionPercent: Record<string, number>;
+  avgMinutesToAssignment: number | null;
+  byStage: Record<string, number>;
+}
+
+/** One board move (C5): who, when, from, to. */
+export interface BoardMove {
+  from: string | null;
+  to: string;
+  by: string;
+  actorKind: string;
+  at: string;
+  note?: string | null;
+}
+
 export interface AdminRequest extends ServiceRequest {
   targetVisit?: { id: string; date: string; slot: string; kind: string; status: string; chefId?: string } | null;
 }
 
 export const adminService = {
   getDashboard: () => api.get<AdminDashboardStats>('/admin/dashboard'),
-  getStageSummary: () => api.get<Record<string, unknown>>('/admin/stage-summary'),
+  getStageSummary: () => api.get<StageSummary>('/admin/stage-summary'),
 
   listRequests: (status?: RequestStatus | 'closed') =>
     api.get<Page<ServiceRequest>>('/admin/requests', { status, limit: 100 }).then((p) => p.items),
@@ -43,7 +61,7 @@ export const adminService = {
   getAssignmentHistory: (requestId: string) => api.get<AssignmentHistoryEntry[]>(`/admin/requests/${requestId}/assignments`),
 
   listTrialBoard: () => api.get<ServiceRequest[]>('/admin/board'),
-  getBoardMoves: (requestId: string) => api.get<{ from: string; to: string; by: string; at: string; note?: string }[]>(`/admin/requests/${requestId}/moves`),
+  getBoardMoves: (requestId: string) => api.get<BoardMove[]>(`/admin/requests/${requestId}/moves`),
   /** Admin pushes trial 2 with a chef from the ranked list and a date. */
   pushSecondTrial: (requestId: string, chefId: string, date: string) =>
     api.post<ServiceRequest>(`/admin/requests/${requestId}/push-trial`, { chefId, date }),

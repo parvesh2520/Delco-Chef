@@ -69,7 +69,10 @@ def eligibility(db: Session, customer_id: int, service: str) -> dict:
     s = settings_svc.load(db)
     max_trials = s.int("max_free_trials")
     open_r = open_request(db, customer_id, service)
-    used = trials_used(db, customer_id, service)
+    used, completed = db.execute(select(
+        func.count().filter(or_(Trial.status != "cancelled", Trial.counted.is_(True))),  # same rule as trials_used()
+        func.count().filter(Trial.status == "completed"),  # same rule as completed_trials()
+    ).where(Trial.customer_id == customer_id, Trial.service == service)).one()
     if open_r and open_r.stage in ("request", "trial1_scheduled", "trial2_requested", "trial2_scheduled"):
         trial_status = "trial_in_progress"
     elif used >= max_trials:
@@ -82,9 +85,9 @@ def eligibility(db: Session, customer_id: int, service: str) -> dict:
     if open_r:
         reason = "You already have an open request for this service."
     return {"service": service, "openRequestId": str(open_r.id) if open_r else None, "trialsUsed": used, "maxTrials": max_trials,
-            "completedTrials": completed_trials(db, customer_id, service), "trialStatus": trial_status,
+            "completedTrials": completed, "trialStatus": trial_status,
             "canRequest": open_r is None, "canRequestTrial": open_r is None and used < max_trials,
-            "canSubscribe": open_r is None and completed_trials(db, customer_id, service) > 0, "reason": reason}
+            "canSubscribe": open_r is None and completed > 0, "reason": reason}
 
 
 # ---------------- Create request (A7, B1, C1) ----------------
@@ -103,6 +106,13 @@ def make_visit(db: Session, r: ServiceRequest, s: Settings, day: date, start_tim
     db.add(v)
     db.flush()
     return v
+
+
+def customer_overlap(db: Session, v: Visit) -> Visit | None:
+    """Another live or completed visit of the same customer whose time window overlaps `v` (one kitchen, one chef)."""
+    return db.scalar(select(Visit).where(Visit.customer_id == v.customer_id, Visit.id != v.id,
+                                         Visit.status.in_(LIVE_VISIT + ("completed",)),
+                                         Visit.starts_at < v.ends_at, Visit.ends_at > v.starts_at).limit(1))
 
 
 def validate_requirements(db: Session, customer_id: int, service: str, body: dict, s: Settings) -> dict:
@@ -291,9 +301,13 @@ def target_visit(db: Session, r: ServiceRequest) -> Visit | None:
 
 # ---------------- Assignment (B3, B4) ----------------
 def assign(db: Session, actor: Actor, visit_id: int, chef_id: int, reason: str | None = None, *, commit: bool = True,
-           quiet: bool = False) -> Visit:
+           quiet: bool = False, confirmed: bool = False) -> Visit:
     """Concurrency: lock the chef row FOR UPDATE, so all assignments of one chef are serialised; re-check the buffer
-    inside that lock; the exclusion constraint on visits is the final backstop."""
+    inside that lock; the exclusion constraint on visits is the final backstop.
+
+    `confirmed=True` records the assignment as already accepted instead of as an offer awaiting the chef (B9). Used only
+    for paid subscription visits scheduled by the system with the chef the customer kept after the trial: they are not
+    offers, so the response timeout (expire_unanswered) must never reclaim them."""
     s = settings_svc.load(db)
     chef = db.scalar(select(Chef).where(Chef.id == chef_id).with_for_update())
     if not chef:
@@ -333,7 +347,8 @@ def assign(db: Session, actor: Actor, visit_id: int, chef_id: int, reason: str |
     db.add(Assignment(visit_id=v.id, request_id=r.id, chef_id=chef_id, previous_chef_id=previous,
                       action="reassigned" if previous else "assigned", reason=reason, score=pick.score,
                       score_parts=pick.parts, runner_up_chef_id=v.runner_up_chef_id,
-                      suggestions=[suggestion_json(x) for x in ranked[:10]], assigned_by=actor.id))
+                      suggestions=[suggestion_json(x) for x in ranked[:10]], assigned_by=actor.id,
+                      status="accepted" if confirmed else "offered", responded_at=now() if confirmed else None))
     r.chef_id = chef_id
     r.assigned_at = r.assigned_at or now()
     if r.stage == "request":
@@ -389,10 +404,29 @@ def respond(db: Session, chef: Chef, assignment_id: int, accept: bool, reason: s
     return a
 
 
+def offer_cutoff(s: Settings) -> datetime:
+    """An offer created before this moment is past the chef's response window (B9)."""
+    return now() - timedelta(minutes=s.int("chef_response_min"))
+
+
+def offer_is_stale(a: Assignment, s: Settings) -> bool:
+    return a.status == "offered" and a.created_at < offer_cutoff(s)
+
+
+def _is_system_subscription_offer():
+    """Rows written before the `confirmed` fix: subscription visits scheduled by the system (no human assigner)
+    were stored as offers. They are confirmed assignments and must never expire."""
+    return Assignment.visit_id.in_(select(Visit.id).where(Visit.kind == "subscription")) & Assignment.assigned_by.is_(None)
+
+
 def expire_unanswered(db: Session) -> int:
-    """B9: offers older than the response timeout go back to the queue."""
+    """B9: offers older than the response timeout go back to the queue. Only genuine offers that need the chef's
+    answer (trials, and visits an admin assigned) expire; system-scheduled subscription assignments are confirmed."""
     s = settings_svc.load(db)
-    cutoff = now() - timedelta(minutes=s.int("chef_response_min"))
+    cutoff = offer_cutoff(s)
+    # Repair legacy rows (idempotent): confirm system subscription assignments that were stored as offers.
+    db.query(Assignment).filter(Assignment.status == "offered", _is_system_subscription_offer()).update(
+        {"status": "accepted"}, synchronize_session=False)
     stale = db.scalars(select(Assignment).where(Assignment.status == "offered", Assignment.created_at < cutoff)
                        .with_for_update(skip_locked=True)).all()
     for a in stale:
@@ -552,11 +586,14 @@ def admin_move(db: Session, actor: Actor, request_id: int, to: str, note: str | 
     except ValueError:
         raise AppError("BOARD_UNKNOWN_STAGE", "Unknown board column.", 422) from None
     if (board.Stage(r.stage), target) not in board.MANUAL_ADMIN_MOVES:
+        if board.TRANSITIONS.get((board.Stage(r.stage), target)) in ("admin_assign", "admin_push"):
+            # A valid move, but it needs a chef (and date): the dedicated assign / push action makes it.
+            raise AppError("BOARD_USE_ACTION", "Use the assign / push action for this move.", 409)
         try:
             board.check(board.Stage(r.stage), target, "admin")
         except board.InvalidMove as e:
             raise AppError(e.code, str(e), 409) from None
-        raise AppError("BOARD_USE_ACTION", "Use the assign / push action for this move.", 409)
+        raise AppError("BOARD_INVALID_TRANSITION", f"Cannot move a card from {r.stage} to {to} by hand.", 409)
     move(db, r, target, "admin", actor, note)
     r.closed_reason = note or "Closed by admin"
     for v in db.scalars(select(Visit).where(Visit.request_id == r.id, Visit.status.in_(("pending_assignment", "needs_manual_assignment", "scheduled")))):

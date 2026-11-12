@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, ChipGroup, InfoRow, Notice, Screen, Section, Txt } from '../../../src/components';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge, Button, Card, ChipGroup, ConfirmDialog, InfoRow, Notice, Screen, Section, Txt } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
-import { Row } from '../../../src/features/admin';
+import { BoardHistory, CLOSABLE_STAGES, Row, STAGE_LABELS } from '../../../src/features/admin';
+import { useToast } from '../../../src/store';
 import { QueryView } from '../../../src/components';
 import { adminService, paymentService } from '../../../src/services';
 import type { ServiceRequest, Trial } from '../../../src/types';
-import { formatDateTime, humanize, toDateKey } from '../../../src/utils';
+import { formatDateTime, humanize, isNetworkError, toDateKey } from '../../../src/utils';
 
 const decisionLabel = (t: Trial, isLast: boolean) => {
   if (t.decision) return humanize(t.decision);
@@ -26,7 +27,20 @@ const conversion = (r: ServiceRequest) => {
 export default function TrialManagement() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   const [pushDate, setPushDate] = useState<string>();
+  const [closing, setClosing] = useState(false);
+  const qc = useQueryClient();
   const query = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => adminService.getRequest(requestId) });
+  const moves = useQuery({ queryKey: ['admin', 'moves', requestId], queryFn: () => adminService.getBoardMoves(requestId) });
+  const close = useMutation({
+    mutationFn: (note: string) => adminService.moveCard(requestId, 'closed', note),
+    onSuccess: () => {
+      setClosing(false);
+      // Board, summary, dashboard, this card and its history all change.
+      qc.invalidateQueries({ queryKey: ['admin'] });
+      useToast.getState().show('Card closed');
+    },
+    onError: () => setClosing(false),
+  });
   const limit = useQuery({ queryKey: ['admin', 'settings', 'trials'], queryFn: () => adminService.getSettingsSection('trials') });
   const subId = query.data?.subscriptionId;
   const payment = useQuery({ queryKey: ['admin', 'payment-for', subId], queryFn: () => paymentService.getForSubscription(subId!), enabled: !!subId });
@@ -91,6 +105,43 @@ export default function TrialManagement() {
                     onPress={() => router.push({ pathname: '/admin/assign/[requestId]', params: { requestId: r.id, push: '1', date: pushDate! } })} />
                 </Section>
               )}
+
+              <Section title="Board">
+                <Card>
+                  <InfoRow label="Current stage" value={STAGE_LABELS[r.stage ?? ''] ?? humanize(r.stage ?? r.status)} icon="albums-outline" />
+                  {r.closedReason && <InfoRow label="Closed because" value={r.closedReason} icon="close-circle-outline" />}
+                </Card>
+                {r.isOpen && CLOSABLE_STAGES.includes(r.stage ?? '') ? (
+                  <Button title="Close card" variant="danger" icon="close-circle-outline" loading={close.isPending} onPress={() => setClosing(true)} />
+                ) : r.isOpen ? (
+                  <Txt variant="caption">This card moves through assign, push, customer decisions and payment; it can’t be closed by hand at this stage.</Txt>
+                ) : null}
+                {close.isError && (
+                  <Notice tone="error">{isNetworkError(close.error) ? 'You’re offline. Nothing was changed.' : close.error.message}</Notice>
+                )}
+              </Section>
+
+              <Section title="Move history">
+                {moves.isPending ? (
+                  <Txt variant="small">Loading history…</Txt>
+                ) : moves.isError ? (
+                  <Button title="Couldn’t load history. Retry" variant="ghost" small onPress={() => moves.refetch()} />
+                ) : (
+                  <BoardHistory moves={moves.data} />
+                )}
+              </Section>
+
+              <ConfirmDialog
+                visible={closing}
+                title="Close this card?"
+                message={`${r.customerName} · ${SERVICE_LABELS[r.service]}. Open visits and trials on it are cancelled. This can’t be undone.`}
+                confirmLabel="Close card"
+                destructive
+                inputLabel="Reason (shown in the history)"
+                loading={close.isPending}
+                onCancel={() => setClosing(false)}
+                onConfirm={(note) => !close.isPending && close.mutate(note)}
+              />
 
               <Section title="Subscription conversion">
                 <Card>

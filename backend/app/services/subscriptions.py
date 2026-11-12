@@ -1,7 +1,7 @@
 """C6–C8: subscription creation (price snapshot), activation on payment, schedule, off-days, missed days."""
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, not_found
@@ -9,7 +9,7 @@ from app.domain import IST, ist_today
 from app.domain import pricing, schedule as sched_rules
 from app.models import Chef, ServiceRequest, Subscription, SubscriptionDay, User, Visit
 from app.services import settings as settings_svc
-from app.services.events import SYSTEM, notify
+from app.services.events import SYSTEM, notify, notify_admins
 from app.services.settings import Settings
 
 
@@ -27,7 +27,11 @@ def create_for_request(db: Session, r: ServiceRequest, s: Settings) -> Subscript
     """Price is computed here, on the server, from settings at this moment, and frozen on the order."""
     from app.services import payments
     tomorrow = ist_today() + timedelta(days=1)
-    start = max(r.start_date, tomorrow)
+    # r.start_date is the trial's date. The paid schedule must begin after the last trial visit of this request,
+    # otherwise day 1 lands on the trial's date and slot (two visits, and the chef's buffer blocks the assignment).
+    last_trial = db.scalar(select(func.max(Visit.service_date)).where(
+        Visit.request_id == r.id, Visit.kind == "trial", Visit.status != "cancelled"))
+    start = max(r.start_date, tomorrow, last_trial + timedelta(days=1) if last_trial else tomorrow)
     span = (r.end_date - r.start_date) if r.end_date else None
     start, end = _dates(r.service, start, (start + span) if span is not None else None, r.weekdays)
     rate, minutes = s.int("rate_paise_per_person_hour"), s.int("visit_minutes")
@@ -47,8 +51,9 @@ def create_for_request(db: Session, r: ServiceRequest, s: Settings) -> Subscript
     return sub
 
 
-def schedule_for(db: Session, sub: Subscription) -> sched_rules.Schedule:
-    days = db.scalars(select(SubscriptionDay).where(SubscriptionDay.subscription_id == sub.id)).all()
+def schedule_for(db: Session, sub: Subscription, days: list[SubscriptionDay] | None = None) -> sched_rules.Schedule:
+    if days is None:
+        days = db.scalars(select(SubscriptionDay).where(SubscriptionDay.subscription_id == sub.id)).all()
     off = {d.day for d in days if d.kind == "off"}
     missed = {d.day for d in days if d.kind == "missed"}
     if sub.service == "monthly_subscription":
@@ -61,7 +66,28 @@ def schedule_json(db: Session, sub: Subscription) -> dict:
     return {"subscriptionId": str(sub.id), "serviceDates": [d.isoformat() for d in sc.service_dates], "visits": sc.visits,
             "endDate": sc.end_date.isoformat(), "forfeitedGuaranteedDays": sc.forfeited_guaranteed_days,
             "extensionDays": [d.isoformat() for d in sc.extension_days], "offDays": [d.isoformat() for d in sc.off_days],
-            "missedDays": [d.isoformat() for d in sc.missed_days], "freeOffDaysLeft": sc.free_off_days_left}
+            "missedDays": [d.isoformat() for d in sc.missed_days], "freeOffDaysLeft": sc.free_off_days_left,
+            "days": schedule_days(db, sub, sc)}
+
+
+def schedule_days(db: Session, sub: Subscription, sc: sched_rules.Schedule) -> list[dict]:
+    """Every day of the plan with its real visit rows (C7). A chef name is shown only for a visit that actually has a
+    chef; a visit waiting for an admin (pending / needs manual assignment) never shows one."""
+    visits = db.scalars(select(Visit).where(Visit.subscription_id == sub.id).order_by(Visit.starts_at)).all()
+    chef_ids = {v.chef_id for v in visits if v.chef_id}
+    names = dict(db.execute(select(Chef.id, User.full_name).join(User, User.id == Chef.user_id)
+                            .where(Chef.id.in_(chef_ids))).all()) if chef_ids else {}
+    by_day: dict[date, list[Visit]] = {}
+    for v in visits:
+        by_day.setdefault(v.service_date, []).append(v)
+    service, off, missed, ext = set(sc.service_dates), set(sc.off_days), set(sc.missed_days), set(sc.extension_days)
+    out = []
+    for d in sorted(service | off | missed | set(by_day)):
+        kind = "off" if d in off else "missed" if d in missed else "extension" if d in ext else "service" if d in service else "removed"
+        out.append({"date": d.isoformat(), "weekday": d.strftime("%a"), "kind": kind, "visits": [
+            {"id": str(v.id), "status": v.status, "startsAt": v.starts_at.isoformat(),
+             "chefName": names.get(v.chef_id) if v.chef_id else None} for v in by_day.get(d, [])]})
+    return out
 
 
 def activate(db: Session, sub: Subscription, paid_at: datetime) -> None:
@@ -96,6 +122,7 @@ def sync_visits(db: Session, sub: Subscription) -> None:
         have.setdefault(v.service_date, []).append(v)
     times = bookings._slot_times(s, sub.slot)
     changed_for_chef: list[str] = []
+    clashes: list[str] = []
     created = 0
     for d, vs in have.items():
         if d not in wanted and d > today:
@@ -114,13 +141,23 @@ def sync_visits(db: Session, sub: Subscription) -> None:
                 v.status, v.cancelled_at, v.chef_id = "pending_assignment", None, None
             else:
                 v = bookings.make_visit(db, r, s, d, t, kind="subscription", subscription_id=sub.id, price_paise=sub.per_visit_paise)
+            clash = bookings.customer_overlap(db, v)
+            if clash:
+                # The customer already has a visit in this window (e.g. another service). Never send two chefs, and
+                # never touch the other booking: hold this paid visit for an admin to reschedule or resolve.
+                v.status = "needs_manual_assignment"
+                clashes.append(f"{d:%d %b} overlaps visit {clash.id}")
+                continue
             if sub.chef_id:
                 try:
                     with db.begin_nested():
-                        bookings.assign(db, SYSTEM, v.id, sub.chef_id, commit=False, quiet=True)
+                        bookings.assign(db, SYSTEM, v.id, sub.chef_id, commit=False, quiet=True, confirmed=True)
                     created += 1
                 except AppError:
                     v.status = "needs_manual_assignment"  # admin queue shows it
+    if clashes:
+        notify_admins(db, "schedule_conflict", "Subscription visit needs rescheduling",
+                      f"Subscription {sub.id}: " + "; ".join(clashes[:5]), f"/admin/request/{sub.request_id}")
     if created and sub.chef_id:
         chef = db.get(Chef, sub.chef_id)
         notify(db, "chef_assigned", chef.user_id, "Subscription visits assigned",

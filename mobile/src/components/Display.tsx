@@ -1,5 +1,6 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
+import { DURATION, EASE_OUT, FadeInUp, useAnimatedNumber } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, radius, spacing } from '../theme';
 import { Card } from './Card';
@@ -34,14 +35,31 @@ export function InfoRow({ label, value, icon }: { label: string; value?: string 
   );
 }
 
+/** A number that rolls from its previous value to the new one (counts, ETA, prices). */
+export function RollingNumber({ value, format = (n) => String(Math.round(n)), ...txt }: { value: number; format?: (n: number) => string } & Omit<React.ComponentProps<typeof Txt>, 'children'>) {
+  const n = useAnimatedNumber(value, DURATION.slow + 200);
+  return <Txt {...txt}>{format(n)}</Txt>;
+}
+
 export function StatTile({ label, value, icon, onPress, highlight }: { label: string; value: string | number; icon: keyof typeof Ionicons.glyphMap; onPress?: () => void; highlight?: boolean }) {
   return (
     <Card onPress={onPress} tone={highlight ? 'accent' : 'default'} style={styles.stat} accessibilityLabel={`${label}: ${value}`}>
       <Ionicons name={icon} size={20} color={colors.purple} />
-      <Txt style={{ fontFamily: fonts.heading, fontSize: 26 }}>{String(value)}</Txt>
+      {typeof value === 'number' ? (
+        <CountUp value={value} />
+      ) : (
+        <Txt style={{ fontFamily: fonts.heading, fontSize: 26 }}>{value}</Txt>
+      )}
       <Txt variant="small">{label}</Txt>
     </Card>
   );
+}
+
+/** Dashboard counts roll up from zero on first show. */
+function CountUp({ value }: { value: number }) {
+  const [target, setTarget] = React.useState(0);
+  useEffect(() => setTarget(value), [value]);
+  return <RollingNumber value={target} style={{ fontFamily: fonts.heading, fontSize: 26 }} />;
 }
 
 export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
@@ -54,12 +72,21 @@ export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
 }
 
 /** "Step 2 of 5" progress bar for wizards. */
+// Last progress shown per wizard length, so the next step's bar fills on from where the previous one stopped.
+const lastProgress: Record<number, number> = {};
+
 export function StepProgress({ step, total, label }: { step: number; total: number; label?: string }) {
+  const target = step / total;
+  const v = useRef(new Animated.Value(lastProgress[total] ?? 0)).current;
+  useEffect(() => {
+    lastProgress[total] = target;
+    Animated.timing(v, { toValue: target, duration: DURATION.slow + 120, easing: EASE_OUT, useNativeDriver: true }).start();
+  }, [target, total, v]);
   return (
     <View style={{ gap: 6 }} accessibilityLabel={`Step ${step} of ${total}`}>
       <Txt variant="caption">Step {step} of {total}{label ? ` · ${label}` : ''}</Txt>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${(step / total) * 100}%` }]} />
+        <Animated.View style={[styles.fill, { width: '100%', transformOrigin: 'left', transform: [{ scaleX: v }] }]} />
       </View>
     </View>
   );
@@ -73,10 +100,10 @@ export function Notice({ tone = 'info', icon = 'information-circle-outline', chi
   } as const;
   const [bg, fg] = map[tone];
   return (
-    <View style={[styles.notice, { backgroundColor: bg }]}>
+    <FadeInUp distance={6} style={[styles.notice, { backgroundColor: bg }]}>
       <Ionicons name={icon} size={18} color={fg} />
       <Txt variant="small" color={colors.text} style={{ flex: 1 }}>{children}</Txt>
-    </View>
+    </FadeInUp>
   );
 }
 

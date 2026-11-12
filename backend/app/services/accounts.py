@@ -3,6 +3,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, not_found
@@ -15,6 +16,8 @@ from app.services.events import notify, notify_admins
 from app.services.storage import storage, validate_image
 
 MAX_ADDRESSES = 3
+# Preferred language (A5): the languages chefs can declare at registration, so customer and chef can be matched.
+LANGUAGES = {"en": "English", "hi": "Hindi", "pa": "Punjabi", "bn": "Bengali", "ta": "Tamil", "mr": "Marathi"}
 TERMS_VERSION = "2026-11"
 LOCATION_VERSION = "2026-11"
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -61,7 +64,10 @@ def update_profile(db: Session, u: User, body: dict) -> dict:
             raise AppError("VALIDATION_ERROR", "Household size must be 1 to 20.", 422, fields={"householdSize": "range"})
         p.household_size = int(body["householdSize"])
     if "preferredLanguage" in body:
-        p.preferred_language = (body["preferredLanguage"] or "en")[:16]
+        lang = body["preferredLanguage"] or "en"
+        if lang not in LANGUAGES:
+            raise AppError("VALIDATION_ERROR", "Choose one of the listed languages.", 422, fields={"preferredLanguage": "invalid"})
+        p.preferred_language = lang
     if "diet" in body and body["diet"]:
         if body["diet"] not in ("veg", "non_veg", "eggetarian", "vegan", "jain"):
             raise AppError("VALIDATION_ERROR", "Unknown dietary preference.", 422, fields={"diet": "invalid"})
@@ -181,10 +187,19 @@ def delete_address(db: Session, u: User, address_id: int) -> None:
 def register_interest(db: Session, u: User, service: str) -> dict:
     if service not in ("home_food", "party_mode"):
         raise AppError("VALIDATION_ERROR", "Notify me is only for coming-soon services.", 422)
-    if not db.get(ServiceInterest, (u.id, service)):
+    already = db.get(ServiceInterest, (u.id, service)) is not None
+    if not already:
         db.add(ServiceInterest(user_id=u.id, service=service))
-        db.commit()
-    return {"service": service, "interested": True}
+        try:
+            db.commit()
+        except IntegrityError:  # a concurrent duplicate tap: the interest is already saved
+            db.rollback()
+            already = True
+    return {"service": service, "interested": True, "alreadyRegistered": already}
+
+
+def interested_services(db: Session, user_id: int) -> set[str]:
+    return set(db.scalars(select(ServiceInterest.service).where(ServiceInterest.user_id == user_id)))
 
 
 # ---------------- Chef ----------------

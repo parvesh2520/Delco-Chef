@@ -76,9 +76,11 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
   const verify = useMutation({
     mutationFn: () => authService.verifyOtp(phone, code, portal),
     onSuccess: (session) => {
-      signIn(session);
-      router.dismissAll();
-      router.replace(homeFor(session));
+      setTimeout(() => {
+        signIn(session);
+        router.dismissAll();
+        router.replace(homeFor(session));
+      }, 650);
     },
     onError: toDenied,
   });
@@ -95,7 +97,7 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
       footer={
         <Button
           title="Verify & continue"
-          disabled={code.length !== 6}
+          disabled={code.length !== 6 || verify.isSuccess}
           loading={verify.isPending}
           onPress={() => verify.mutate()}
         />
@@ -104,8 +106,9 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
       <CodeInput
         length={6}
         value={code}
-        onChange={setCode}
+        onChange={(c) => (verify.isError && verify.reset(), setCode(c))}
         error={verify.isError ? verify.error.message : undefined}
+        success={verify.isSuccess}
       />
       <View style={{ alignItems: 'center', gap: 8 }}>
         {left > 0 ? (

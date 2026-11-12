@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
+import { PopIn, PulseDot } from '../motion';
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
 import { APP_CONFIG } from '../constants';
@@ -33,6 +34,19 @@ export function MapPreview({ destination, chef, height = 220, label }: { destina
       </View>
     );
   }
+  return <FallbackMap destination={destination} chef={chef} height={height} label={label} />;
+}
+
+/** Stylised map used when Google Maps is off. The chef marker glides to each new GPS fix and pulses while live. */
+function FallbackMap({ destination, chef, height, label }: { destination?: LatLng; chef?: LatLng; height: number; label?: string }) {
+  const last = useRef(chef ? `${chef.lat},${chef.lng}` : '');
+  const key = chef ? `${chef.lat},${chef.lng}` : '';
+  useEffect(() => {
+    if (key !== last.current) last.current = key;
+  }, [key]);
+  if (key !== last.current && last.current) {
+    LayoutAnimation.configureNext({ duration: 900, update: { type: LayoutAnimation.Types.easeInEaseOut } });
+  }
   const pos = (p: LatLng) => {
     if (!destination) return { left: '50%', top: '50%' } as const;
     const dx = (p.lng - destination.lng) * 1800;
@@ -44,13 +58,20 @@ export function MapPreview({ destination, chef, height = 220, label }: { destina
       {[20, 45, 70].map((t) => <View key={`h${t}`} style={[styles.road, { top: `${t}%`, left: 0, right: 0, height: 10 }]} />)}
       {[25, 60].map((l) => <View key={`v${l}`} style={[styles.road, { left: `${l}%`, top: 0, bottom: 0, width: 10 }]} />)}
       {destination && (
-        <View style={[styles.pin, pos(destination)]}>
-          <Ionicons name="home" size={18} color={colors.textOnDark} />
+        <View style={[styles.pinBox, pos(destination)]}>
+          <PopIn style={styles.pin}>
+            <Ionicons name="home" size={18} color={colors.textOnDark} />
+          </PopIn>
         </View>
       )}
       {chef && (
-        <View style={[styles.pin, styles.chefPin, pos(chef)]}>
-          <Ionicons name="bicycle" size={18} color={colors.primary} />
+        <View style={[styles.pinBox, pos(chef)]}>
+          <View style={styles.halo} pointerEvents="none">
+            <PulseDot color={colors.accent} size={26} />
+          </View>
+          <PopIn delay={200} style={[styles.pin, styles.chefPin]}>
+            <Ionicons name="bicycle" size={18} color={colors.primary} />
+          </PopIn>
         </View>
       )}
     </View>
@@ -106,8 +127,23 @@ export function PhotoCapture({ label, captured, onCapture, icon = 'camera-outlin
 
 const WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-/** Month calendar with selectable days (off-day pickers). Past days are disabled. */
-export function Calendar({ selected, onToggle, marked = [], minDate = new Date(), maxDate }: { selected: string[]; onToggle?: (key: string) => void; marked?: string[]; minDate?: Date; maxDate?: Date }) {
+/** Month calendar with selectable days (off-day pickers). Past days are disabled.
+ * Pass `allowedDates` to restrict selection to valid service dates only. */
+export function Calendar({
+  selected,
+  onToggle,
+  marked = [],
+  minDate = new Date(),
+  maxDate,
+  allowedDates,
+}: {
+  selected: string[];
+  onToggle?: (key: string) => void;
+  marked?: string[];
+  minDate?: Date;
+  maxDate?: Date;
+  allowedDates?: string[];
+}) {
   const [cursor, setCursor] = useState(() => new Date(minDate.getFullYear(), minDate.getMonth(), 1));
   const cells = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -132,13 +168,36 @@ export function Calendar({ selected, onToggle, marked = [], minDate = new Date()
         {cells.map((d, i) => {
           if (!d) return <View key={i} style={styles.cell} />;
           const key = toDateKey(d);
-          const disabled = key < minKey || (!!maxKey && key > maxKey) || !onToggle;
+          const isAllowed = !allowedDates || allowedDates.includes(key);
+          const inRange = key >= minKey && (!maxKey || key <= maxKey);
+          const disabled = !inRange || !isAllowed || !onToggle;
           const on = selected.includes(key);
           const mark = marked.includes(key);
           return (
-            <Pressable key={i} disabled={disabled} onPress={() => onToggle?.(key)} accessibilityLabel={`${d.toDateString()}${on ? ', selected' : ''}`} style={styles.cell}>
-              <View style={[styles.day, on && { backgroundColor: colors.accent }, mark && !on && { borderWidth: 1.5, borderColor: colors.purple }]}>
-                <Txt variant="label" color={disabled && !on ? colors.textMuted : colors.primary}>{d.getDate()}</Txt>
+            <Pressable
+              key={i}
+              disabled={disabled}
+              onPress={() => onToggle?.(key)}
+              accessibilityLabel={`${d.toDateString()}${on ? ', selected off-day' : ''}${!isAllowed ? ', no service scheduled' : ''}`}
+              style={styles.cell}
+            >
+              <View
+                style={[
+                  styles.day,
+                  on && { backgroundColor: colors.accent },
+                  mark && !on && { borderWidth: 1.5, borderColor: colors.purple },
+                  !isAllowed && inRange && { opacity: 0.3 },
+                ]}
+              >
+                <Txt
+                  variant="label"
+                  color={disabled && !on ? colors.textMuted : colors.primary}
+                >
+                  {d.getDate()}
+                </Txt>
+                {isAllowed && inRange && !on && (
+                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.purple, marginTop: 1 }} />
+                )}
               </View>
             </Pressable>
           );
@@ -151,8 +210,10 @@ export function Calendar({ selected, onToggle, marked = [], minDate = new Date()
 const styles = StyleSheet.create({
   map: { borderRadius: radius.lg, backgroundColor: '#EFE7DA', overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   road: { position: 'absolute', backgroundColor: '#FFFFFF', opacity: 0.8 },
-  pin: { position: 'absolute', width: 36, height: 36, borderRadius: 18, marginLeft: -18, marginTop: -18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FFFFFF' },
+  pin: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#FFFFFF' },
   chefPin: { backgroundColor: colors.accent },
+  pinBox: { position: 'absolute', width: 36, height: 36, marginLeft: -18, marginTop: -18, alignItems: 'center', justifyContent: 'center' },
+  halo: { position: 'absolute', opacity: 0.6 },
   frame: { height: 280, borderRadius: radius.xl, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.purple, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center', gap: 8, padding: spacing.md },
   cal: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
   calHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },

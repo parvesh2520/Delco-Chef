@@ -13,7 +13,7 @@ from app.core.errors import AppError, not_found
 from app.models import DataExport, ServiceRequest, Subscription, Trial
 from app.services import accounts, bookings, payments, privacy, subscriptions
 from app.services import settings as settings_svc
-from app.services.presenters import address_json, request_json, subscription_json, trial_json
+from app.services.presenters import Prefetch, address_json, request_json, subscription_json, trial_json
 from app.services.storage import storage
 
 router = APIRouter(tags=["Customer"])
@@ -37,9 +37,12 @@ def _catalogue(db: Session, user_id: int | None) -> list[dict]:
     s = settings_svc.load(db)
     rate = s.int("rate_paise_per_person_hour")
     out = []
+    interested = accounts.interested_services(db, user_id) if user_id else set()
     for svc in SERVICES:
         item = dict(svc)
-        if svc["available"]:
+        if not svc["available"]:
+            item["interested"] = svc["type"] in interested
+        else:
             item["priceFrom"] = rate / 100  # one person, one visit
             item["priceUnit"] = "per person per visit"
             if user_id:
@@ -72,7 +75,8 @@ def config(db: Session = Depends(get_db)):
     return {"slots": settings_svc.slot_options(s), "maxFreeTrials": s.int("max_free_trials"), "trialMaxPeople": s.int("trial_max_people"),
             "ratePerPersonPerVisit": s.int("rate_paise_per_person_hour") * s.int("visit_minutes") // 60 / 100,
             "trackingPollSec": s.int("ping_interval_s"), "staleAfterSec": s.int("stale_after_s"),
-            "trackingWindowMin": s.int("tracking_window_min"), "customDays": {"min": 7, "max": 90}, "maxAddresses": 3}
+            "trackingWindowMin": s.int("tracking_window_min"), "customDays": {"min": 7, "max": 90}, "maxAddresses": accounts.MAX_ADDRESSES,
+            "languages": [{"value": k, "label": v} for k, v in accounts.LANGUAGES.items()]}
 
 
 # ---------------- Profile ----------------
@@ -147,7 +151,8 @@ def create_request(body: RequestIn, p: Principal = Depends(customer_only), db: S
 def my_requests(p: Principal = Depends(customer_only), db: Session = Depends(get_db)):
     s = settings_svc.load(db)
     rows = db.scalars(select(ServiceRequest).where(ServiceRequest.customer_id == p.user.id).order_by(ServiceRequest.created_at.desc())).all()
-    return [request_json(db, r, s, "customer", max_trials=s.int("max_free_trials")) for r in rows]
+    pf = Prefetch(db, rows, customer=p.user)
+    return [request_json(db, r, s, "customer", max_trials=s.int("max_free_trials"), pf=pf) for r in rows]
 
 
 @router.get("/requests/{request_id}")
@@ -189,7 +194,8 @@ def history(limit: int = Query(20, ge=1, le=50), cursor: str | None = None, p: P
 def my_trials(p: Principal = Depends(customer_only), db: Session = Depends(get_db)):
     s = settings_svc.load(db)
     rows = db.scalars(select(Trial).where(Trial.customer_id == p.user.id).order_by(Trial.created_at.desc())).all()
-    return [trial_json(db, t, s, s.int("max_free_trials")) for t in rows]
+    pf = Prefetch.for_trials(db, rows)
+    return [trial_json(db, t, s, s.int("max_free_trials"), pf) for t in rows]
 
 
 @router.get("/trials/{trial_id}")

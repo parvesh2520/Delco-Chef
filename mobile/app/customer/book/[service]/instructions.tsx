@@ -24,11 +24,11 @@ function InstructionsForm({ service }: { service: BookableService }) {
       <TextField
         label="Instructions for your chef (optional)"
         multiline
-        maxLength={500}
+        maxLength={300}
         value={draft.instructions ?? ''}
         onChangeText={(instructions) => update({ instructions })}
         placeholder="Spice level, oil preference, kitchen tips, gate/parking info…"
-        hint={`${(draft.instructions ?? '').length}/500`}
+        hint={`${(draft.instructions ?? '').length}/300`}
       />
     </Screen>
   );

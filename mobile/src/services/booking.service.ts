@@ -28,10 +28,29 @@ export interface AppConfig {
   trackingWindowMin: number;
   customDays: { min: number; max: number };
   maxAddresses: number;
+  /** Preferred-language options the server accepts (A5). */
+  languages: { value: string; label: string }[];
+}
+
+/** One real visit row on a schedule day. `chefName` is set only when a chef is actually assigned. */
+export interface ScheduleVisit {
+  id: string;
+  status: string;
+  startsAt: string;
+  chefName: string | null;
+}
+
+export interface ScheduleDay {
+  date: string;
+  weekday: string;
+  /** service | off (customer off-day) | missed (company missed) | extension (added for a missed day) | removed */
+  kind: 'service' | 'off' | 'missed' | 'extension' | 'removed';
+  visits: ScheduleVisit[];
 }
 
 export interface Schedule {
   subscriptionId: string;
+  days: ScheduleDay[];
   serviceDates: string[];
   visits: number;
   endDate: string;
@@ -46,7 +65,7 @@ export const bookingService = {
   getConfig: () => api.get<AppConfig>('/config'),
   listServices: () => api.get<ServiceOffering[]>('/services'),
   getService: (type: ServiceType) => api.get<ServiceOffering>(`/services/${type}`),
-  notifyMe: (type: ServiceType) => api.post<{ interested: boolean }>(`/services/${type}/interest`),
+  notifyMe: (type: ServiceType) => api.post<{ service: ServiceType; interested: boolean; alreadyRegistered: boolean }>(`/services/${type}/interest`),
 
   getEligibility: (service: BookableService) => api.get<ServiceEligibility>(`/customers/me/eligibility/${service}`),
 

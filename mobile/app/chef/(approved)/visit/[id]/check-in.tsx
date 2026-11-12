@@ -14,14 +14,14 @@ export default function ChefCheckInCode() {
     mutationFn: () => visitService.verifyCheckInCode(id, code),
     onSuccess: () => {
       mark(id, 'code', code);
-      router.replace({ pathname: '/chef/visit/[id]/selfie', params: { id, kind: 'check_in' } });
+      setTimeout(() => router.replace({ pathname: '/chef/visit/[id]/selfie', params: { id, kind: 'check_in' } }), 500);
     },
   });
   return (
     <Screen eyebrow="Check in" title="Enter the customer’s code" subtitle="The customer sees a 4-digit code in their app for this visit." footer={
-      <Button title="Verify code" disabled={code.length !== 4} loading={verify.isPending} onPress={() => verify.mutate()} />
+      <Button title="Verify code" disabled={code.length !== 4 || verify.isSuccess} loading={verify.isPending} onPress={() => verify.mutate()} />
     }>
-      <CodeInput length={4} value={code} onChange={setCode} error={verify.isError ? verify.error.message : undefined} />
+      <CodeInput length={4} value={code} onChange={(c) => (verify.isError && verify.reset(), setCode(c))} error={verify.isError ? verify.error.message : undefined} success={verify.isSuccess} />
       <Notice>Your location is checked when you submit the selfie: you must be within the check-in radius of the customer’s address.</Notice>
     </Screen>
   );

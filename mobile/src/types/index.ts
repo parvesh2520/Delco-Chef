@@ -33,6 +33,8 @@ export interface Address extends LatLng {
   label: string;
   line1: string;
   line2?: string;
+  /** Landmark note for the chef (A8). */
+  landmark?: string;
   city: string;
   pincode: string;
   isDefault: boolean;
@@ -44,7 +46,14 @@ export interface CustomerProfile {
   phone: string;
   email?: string;
   householdSize?: number;
+  /** Language code from GET /config `languages` (A5). */
+  preferredLanguage?: string;
+  diet?: DietType | null;
+  cuisines?: string[];
+  allergies?: string[];
+  allergyNotes?: string | null;
   consentAcceptedAt?: string;
+  onboarded?: boolean;
 }
 
 // ---------- Services & bookings ----------
@@ -65,6 +74,8 @@ export interface ServiceOffering {
   priceFrom?: number;
   priceUnit?: string;
   highlights: string[];
+  /** Coming-soon services only: this customer already asked to be notified (A6). */
+  interested?: boolean;
 }
 
 export type DietType = 'veg' | 'non_veg' | 'eggetarian' | 'vegan' | 'jain';
