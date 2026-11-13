@@ -6,16 +6,24 @@ module.exports = ({ config }) => {
     ...config,
     android: {
       ...config.android,
-      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'CAMERA'],
+      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'CAMERA', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION', 'POST_NOTIFICATIONS'],
+      blockedPermissions: ['android.permission.ACCESS_BACKGROUND_LOCATION'],
       ...(mapsKey ? { config: { googleMaps: { apiKey: mapsKey } } } : {}),
     },
     ios: {
       ...config.ios,
       ...(mapsKey ? { config: { googleMapsApiKey: mapsKey } } : {}),
     },
+    extra: { ...config.extra, googleMapsConfigured: Boolean(mapsKey) },
     plugins: [
       ...(config.plugins ?? []),
-      ['expo-location', { locationWhenInUsePermission: 'Delco Chefs uses your location to pin your address, and for chefs to share live travel location and check in at the customer’s home.' }],
+      // Part E1: chefs share location during travel through a user-started foreground service (visible notification).
+      // That needs only "while using the app" permission, so ACCESS_BACKGROUND_LOCATION is deliberately NOT requested.
+      ['expo-location', {
+        locationWhenInUsePermission: 'Delco Chefs uses your location to pin your address, and for chefs to share live travel location and check in at the customer’s home.',
+        isAndroidForegroundServiceEnabled: true,
+        isAndroidBackgroundLocationEnabled: false,
+      }],
       ['expo-image-picker', { cameraPermission: 'Chefs take a check-in selfie and food photos to complete a visit.', photosPermission: 'Chefs attach identity documents to their application.' }],
     ],
   };

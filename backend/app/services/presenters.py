@@ -193,6 +193,16 @@ def subscription_json(db: Session, sub: Subscription, s: Settings) -> dict:
             "activatedAt": iso(sub.activated_at)}
 
 
+CONTACT_WINDOW = timedelta(hours=2)
+
+
+def chef_contact_open(v: Visit, now: datetime) -> bool:
+    """H4: the assigned chef sees the customer's full address and phone only for a live booking, from 2 h before the
+    start until 2 h after the end. Callers must already have checked that the chef is the one assigned to `v`."""
+    return (v.status not in ("cancelled", "missed", "pending_assignment", "needs_manual_assignment")
+            and v.starts_at - CONTACT_WINDOW <= now <= v.ends_at + CONTACT_WINDOW)
+
+
 def visit_status(v: Visit) -> str:
     return {"checked_in": "cooking", "needs_manual_assignment": "pending_assignment"}.get(v.status, v.status)
 
@@ -200,12 +210,13 @@ def visit_status(v: Visit) -> str:
 def visit_json(db: Session, v: Visit, viewer_role: str, *, now: datetime | None = None) -> dict:
     """Customer: own visit incl. check-in code. Chef: full address/phone only from 2h before start to 2h after end (H4).
     Admin: masked phone."""
-    now = now or datetime.now(timezone.utc)
+    from app.core import clock
+    now = now or clock.now()
     r = db.get(ServiceRequest, v.request_id)
     cust = db.get(User, v.customer_id)
     addr = db.get(Address, v.address_id)
     phone = phone_of(cust)
-    in_window = v.starts_at - timedelta(hours=2) <= now <= v.ends_at + timedelta(hours=2)
+    in_window = chef_contact_open(v, now)
     if viewer_role == "customer":
         address, phone_out = address_json(addr), phone
     elif viewer_role == "chef":

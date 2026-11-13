@@ -1,0 +1,29 @@
+{
+  "processes": 4,
+  "duration_s": 60.0,
+  "offered_ingest_rps": 200.0,
+  "ingest": {
+    "requests": 12000,
+    "rps": 200.0,
+    "p50_ms": 17.9,
+    "p95_ms": 67.1,
+    "p99_ms": 270.9,
+    "max_ms": 487.6,
+    "error_rate": 0.0,
+    "status_codes": {
+      "200": 12000
+    }
+  },
+  "live_view": {
+    "requests": 600,
+    "rps": 10.0,
+    "p50_ms": 16.9,
+    "p95_ms": 68.0,
+    "p99_ms": 292.4,
+    "max_ms": 315.3,
+    "error_rate": 0.0,
+    "status_codes": {
+      "200": 600
+    }
+  }
+}

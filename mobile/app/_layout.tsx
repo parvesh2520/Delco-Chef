@@ -6,6 +6,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts, Calistoga_400Regular } from '@expo-google-fonts/calistoga';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { authService, queryClient } from '../src/services';
+// Defines the background location task at startup (Android re-delivers fixes to it while the app is backgrounded).
+import '../src/features/tracking';
 import { ToastHost } from '../src/components';
 import { CelebrationHost } from '../src/motion';
 import { colors } from '../src/theme';

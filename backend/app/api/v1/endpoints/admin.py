@@ -8,12 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, admin_only, super_admin_only
 from app.api.schemas import (ActiveIn, AdjustIn, AdminIn, AssignIn, ChefDecisionIn, MoveIn, PayoutDecisionIn, PushTrialIn,
-                             ReasonIn, ResolveIn, SettingsIn)
+                             ResolveIn, RevealIn, SettingsIn)
 from app.core.database import get_db
 from app.core.errors import AppError, not_found
 from app.core.security import encrypt, lookup_hash, mask_phone
 from app.domain import IST, ist_today
-from app.models import (Assignment, AttendanceRecord, AuditLog, BoardMove, Chef, ChefDocument, Payment, PaymentLink, Payout,
+from app.models import (Assignment, AttendanceEvent, AttendanceRecord, AuditLog, BoardMove, Chef, ChefDocument, Payment, PaymentLink, Payout,
                         ServiceRequest, Subscription, User, Visit)
 from app.services import attendance, bookings, payouts, privacy
 from app.services import settings as settings_svc
@@ -187,7 +187,7 @@ def customer(customer_id: int, p: Principal = Depends(admin_only), db: Session =
 
 
 @router.post("/users/{user_id}/reveal-phone", summary="Reveal a full phone number (audited)")
-def reveal_phone(user_id: int, body: ReasonIn, p: Principal = Depends(admin_only), db: Session = Depends(get_db)):
+def reveal_phone(user_id: int, body: RevealIn, p: Principal = Depends(admin_only), db: Session = Depends(get_db)):
     return privacy.reveal_phone(db, p.actor, user_id, body.reason)
 
 
@@ -200,16 +200,23 @@ def chef(chef_id: int, p: Principal = Depends(admin_only), db: Session = Depends
 
 
 # ---------------- Attendance ----------------
-def _att_json(db: Session, a: AttendanceRecord) -> dict:
+def _att_json(db: Session, a: AttendanceRecord, *, detail: bool = False) -> dict:
     v = db.get(Visit, a.visit_id)
     cust = db.scalar(select(User.full_name).where(User.id == v.customer_id))
     status = {"needs_review": "exception", "open": "ok"}.get(a.status, a.status)
+    extra = {}
+    if detail:  # the review screen: every check-in/out attempt with its server time, position quality and device
+        events = db.scalars(select(AttendanceEvent).where(AttendanceEvent.visit_id == v.id).order_by(AttendanceEvent.at.desc()).limit(50))
+        extra["events"] = [{"kind": e.kind, "result": e.result, "at": iso(e.at), "accuracyM": e.accuracy_m,
+                            "distanceM": round(e.distance_m) if e.distance_m is not None else None, "deviceId": e.device_id} for e in events]
     return {"id": str(a.id), "visitId": str(v.id), "chefName": chef_name(db, a.chef_id), "customerName": cust or "Customer",
             "date": iso(v.starts_at), "slot": visit_slot(v), "checkInAt": iso(a.check_in_at), "checkOutAt": iso(a.check_out_at),
             "checkInDistanceM": a.check_in_distance_m, "checkOutDistanceM": a.check_out_distance_m,
             "codeVerified": v.code_used_at is not None, "selfieCaptured": a.check_in_selfie_id is not None,
             "foodPhotoCaptured": a.food_photo_id is not None, "status": status, "rawStatus": a.status, "exception": a.exception,
             "resolution": a.resolution, "workedMinutes": a.worked_minutes, "codeAttempts": v.code_attempts,
+            "scheduledMinutes": int((v.ends_at - v.starts_at).total_seconds() // 60), "decision": attendance.decision_of(a),
+            "reviewedBy": reviewer_name(db, a.resolved_by), "reviewedAt": iso(a.resolved_at), **extra,
             "photos": {k: (f"/api/v1/media/photos/{pid}" if pid else None) for k, pid in
                        (("checkInSelfie", a.check_in_selfie_id), ("checkOutSelfie", a.check_out_selfie_id), ("food", a.food_photo_id))}}
 
@@ -229,12 +236,17 @@ def attendance_get(record_id: int, p: Principal = Depends(admin_only), db: Sessi
     a = db.get(AttendanceRecord, record_id)
     if not a:
         raise not_found("Attendance record")
-    return _att_json(db, a)
+    return _att_json(db, a, detail=True)
 
 
-@router.post("/attendance/{record_id}/resolve", summary="Correct & approve (who/what/why recorded)")
+def reviewer_name(db: Session, user_id: int | None) -> str | None:
+    return db.scalar(select(User.full_name).where(User.id == user_id)) if user_id else None
+
+
+@router.post("/attendance/{record_id}/resolve", summary="Approve (optionally correcting worked minutes) or reject with a reason")
 def attendance_resolve(record_id: int, body: ResolveIn, p: Principal = Depends(admin_only), db: Session = Depends(get_db)):
-    return _att_json(db, attendance.resolve(db, p.actor, record_id, body.resolution, body.workedMinutes))
+    rec = attendance.resolve(db, p.actor, record_id, body.resolution, body.workedMinutes, body.decision)
+    return _att_json(db, rec, detail=True)
 
 
 # ---------------- Payments (admin view) ----------------
@@ -341,12 +353,12 @@ def decide_chef(chef_id: int, body: ChefDecisionIn, p: Principal = Depends(super
 
 
 @router.post("/chefs/{chef_id}/documents/{doc_id}/reveal", summary="Super Admin only; every reveal is audited")
-def reveal_document(chef_id: int, doc_id: int, body: ReasonIn, p: Principal = Depends(super_admin_only), db: Session = Depends(get_db)):
+def reveal_document(chef_id: int, doc_id: int, body: RevealIn, p: Principal = Depends(super_admin_only), db: Session = Depends(get_db)):
     return privacy.reveal_document(db, p.actor, chef_id, doc_id, body.reason)
 
 
 @router.post("/chefs/{chef_id}/bank/reveal")
-def reveal_bank(chef_id: int, body: ReasonIn, p: Principal = Depends(super_admin_only), db: Session = Depends(get_db)):
+def reveal_bank(chef_id: int, body: RevealIn, p: Principal = Depends(super_admin_only), db: Session = Depends(get_db)):
     return privacy.reveal_bank(db, p.actor, chef_id, body.reason)
 
 

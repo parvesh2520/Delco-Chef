@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import type { BookableService, DietType, MealType, ServiceType, UserRole } from '../types';
 
 export const APP_CONFIG = {
@@ -12,6 +13,8 @@ export const APP_CONFIG = {
   environment: process.env.EXPO_PUBLIC_APP_ENV || 'development',
   /** Google Maps via react-native-maps. Requires GOOGLE_MAPS_API_KEY at build time (app.config.js). */
   mapsEnabled: process.env.EXPO_PUBLIC_MAPS_ENABLED !== 'false',
+  /** true only when the build had GOOGLE_MAPS_API_KEY (set by app.config.js; the key itself is not in the JS bundle). */
+  googleMapsConfigured: Constants.expoConfig?.extra?.googleMapsConfigured === true,
 } as const;
 
 export const USER_ROLES = {

@@ -15,8 +15,12 @@ request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id
 _PATTERNS = [
     # Database URLs in connection errors: keep the scheme and host, drop the user and password.
     (re.compile(r"(postgres(?:ql)?(?:\+\w+)?://)[^@\s/]+@"), r"\1***@"),
-    (re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)"), "[PHONE]"),
+    # 10-digit Indian mobile, optionally +91/91/0-prefixed, also written as 5+5 digits with a space or hyphen.
+    (re.compile(r"(?<!\d)(?:(?:\+?91|0)[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)"), "[PHONE]"),
     (re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]+"), "Bearer [TOKEN]"),
+    # PostgreSQL constraint errors echo the row / key values in their DETAIL line (names, emails, notes).
+    (re.compile(r"Failing row contains \(.*"), "Failing row contains ([REDACTED])"),
+    (re.compile(r"(Key \([^)]*\)=)\(.*?\)(?= already exists| is not present| conflicts)"), r"\g<1>([REDACTED])"),
     (re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"), "[JWT]"),
     (re.compile(r'(?i)("?(?:otp|code|password|token|refresh_token|refreshToken|secret)"?\s*[:=]\s*"?)[^",\s}]+'), r"\1[REDACTED]"),
 ]

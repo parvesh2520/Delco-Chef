@@ -2,7 +2,7 @@
 
 - Outbox: claims rows with FOR UPDATE SKIP LOCKED, so several instances never deliver the same event twice.
 - Location flush: batches buffered tracking points into one INSERT every 2 s.
-- Scheduled jobs: chef-offer expiry, attendance auto-close, link expiry, payout cycle, location retention.
+- Scheduled jobs: chef-offer expiry, attendance auto-close, link expiry, payout cycle, location and export retention.
 """
 import logging
 import threading
@@ -66,7 +66,7 @@ def _run(name: str, fn, *args) -> None:
 
 
 def _loop() -> None:
-    from app.services import attendance, bookings, payments, payouts, tracking
+    from app.services import attendance, bookings, payments, payouts, privacy, tracking
     last = {"minute": 0.0, "hour": 0.0, "day": 0.0}
     while not _stop.is_set():
         try:
@@ -86,6 +86,7 @@ def _loop() -> None:
         if t - last["day"] >= 86400:
             last["day"] = t
             _run("location_retention", tracking.purge_old)
+            _run("export_retention", privacy.purge_expired_exports)
         _stop.wait(2)
 
 

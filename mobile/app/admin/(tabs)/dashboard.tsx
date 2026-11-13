@@ -3,13 +3,43 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Screen, Section, StatTile } from '../../../src/components';
+import { Badge, Button, NextActionCard, Screen, Section, StatTile, type NextAction } from '../../../src/components';
 import { QueryView } from '../../../src/components';
 import { ROLE_LABELS } from '../../../src/constants';
 import { StageSummaryCard } from '../../../src/features/admin';
 import { useIsSuperAdmin, useSession } from '../../../src/navigation';
 import { adminService } from '../../../src/services';
 import { colors } from '../../../src/theme';
+
+type Dashboard = Awaited<ReturnType<typeof adminService.getDashboard>>;
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The queue that most needs an Admin right now; a calm card when everything is handled. */
+function nextAction(d: Dashboard, isSuper: boolean): NextAction {
+  if (d.attendanceExceptions > 0) {
+    return { eyebrow: 'Needs review', icon: 'warning-outline', title: plural(d.attendanceExceptions, 'attendance exception', 'attendance exceptions'),
+      detail: 'Check-ins or check-outs that need a decision before the chef is paid.',
+      actions: [{ title: 'Review attendance', icon: 'arrow-forward', onPress: () => router.push('/admin/attendance') }] };
+  }
+  if (d.pendingRequests > 0) {
+    return { eyebrow: 'Waiting for a chef', icon: 'file-tray-full-outline', title: plural(d.pendingRequests, 'request to assign', 'requests to assign'),
+      detail: 'Customers are waiting for a chef to be assigned.',
+      actions: [{ title: 'Open request queue', icon: 'arrow-forward', onPress: () => router.push('/admin/requests') }] };
+  }
+  if (d.pendingPayments > 0) {
+    return { eyebrow: 'Follow up', icon: 'card-outline', title: plural(d.pendingPayments, 'payment pending', 'payments pending'),
+      detail: 'Payment links sent but not paid yet.',
+      actions: [{ title: 'View payments', icon: 'arrow-forward', onPress: () => router.push('/admin/payments') }] };
+  }
+  if (isSuper && d.pendingChefApplications > 0) {
+    return { eyebrow: 'Approvals', icon: 'person-add-outline', title: plural(d.pendingChefApplications, 'chef application', 'chef applications'),
+      detail: 'New chefs waiting for document review.',
+      actions: [{ title: 'Review applications', icon: 'arrow-forward', onPress: () => router.push('/admin/super/chef-applications') }] };
+  }
+  return { eyebrow: 'All clear', icon: 'checkmark-circle-outline', title: 'Nothing waiting on you', calm: true,
+    detail: `${plural(d.trialsToday, 'trial', 'trials')} today · ${plural(d.activeSubscriptions, 'active subscription', 'active subscriptions')}.`,
+    actions: [{ title: 'Trial board', icon: 'albums-outline', onPress: () => router.push('/admin/trials') }] };
+}
 
 export default function AdminDashboard() {
   const session = useSession();
@@ -32,7 +62,9 @@ export default function AdminDashboard() {
       {session && <Badge tone="info" label={ROLE_LABELS[session.user.role]} />}
       <QueryView query={query}>
         {(d) => (
-          <Section title="Today at a glance">
+          <>
+          <NextActionCard {...nextAction(d, isSuper)} />
+          <Section eyebrow="Today at a glance">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
               <StatTile label="Pending requests" value={d.pendingRequests} icon="file-tray-full-outline" highlight={d.pendingRequests > 0} onPress={() => router.push('/admin/requests')} />
               <StatTile label="Trials today" value={d.trialsToday} icon="albums-outline" onPress={() => router.push('/admin/trials')} />
@@ -44,6 +76,7 @@ export default function AdminDashboard() {
               )}
             </View>
           </Section>
+          </>
         )}
       </QueryView>
       <Section title="Customer funnel" eyebrow="All time">

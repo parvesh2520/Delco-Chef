@@ -1,11 +1,16 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, approved_chef, current, current_chef
 from app.api.schemas import ChefApplicationIn, ChefPatchIn, DaysIn, RespondIn
 from app.core.database import get_db
-from app.core.errors import not_found
+from app.core import clock
+from app.core.errors import AppError, not_found
+from app.core.security import constant_eq
 from app.models import Assignment, AttendanceRecord, Chef, Notification, Visit
 from app.services import accounts, bookings, payouts
 from app.services import settings as settings_svc
@@ -70,9 +75,25 @@ def respond(assignment_id: int, body: RespondIn, chef: Chef = Depends(approved_c
     return assignment_json(db, a, chef.home_lat, chef.home_lng, settings_svc.load(db))
 
 
-@router.get("/chefs/me/earnings")
+@router.get("/chefs/me/earnings", summary="Current week's earnings, every booking, and a signed statement link")
 def earnings(chef: Chef = Depends(approved_chef), db: Session = Depends(get_db)):
     return payouts.chef_earnings(db, chef)
+
+
+@router.get("/chefs/statements/{chef_id}", summary="G4: CSV statement via the signed, 10-minute link from /chefs/me/earnings")
+def statement(chef_id: int, cycleStart: str, expires: int, sig: str, db: Session = Depends(get_db)):
+    try:
+        start = date.fromisoformat(cycleStart)
+    except ValueError:
+        raise AppError("VALIDATION_ERROR", "cycleStart must be a date.", 422) from None
+    if expires < int(clock.now().timestamp()) or not constant_eq(sig, payouts.statement_token(chef_id, start, expires)):
+        raise AppError("LINK_EXPIRED", "This link has expired. Open Earnings again to get a new one.", 403)
+    chef = db.get(Chef, chef_id)
+    if not chef:
+        raise not_found("Chef")
+    body = payouts.statement_csv(payouts.statement(db, chef, start))
+    return Response(body, media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="earnings-{start.isoformat()}.csv"', "Cache-Control": "no-store"})
 
 
 @router.get("/chefs/me/attendance")

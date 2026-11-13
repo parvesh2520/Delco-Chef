@@ -18,11 +18,17 @@ def _bounds(start: date) -> tuple[datetime, datetime]:
     return a, a + timedelta(days=7)
 
 
+NOT_PAYABLE_STATUSES = ("cancelled", "missed")
+REVIEW_STATUSES = ("needs_review", "exception")  # both wait for an Admin decision (D5) before they can be paid
+
+
 def _payable(db: Session, v: Visit) -> PayableVisit:
     a = db.scalar(select(AttendanceRecord).where(AttendanceRecord.visit_id == v.id))
+    cancelled = v.status in NOT_PAYABLE_STATUSES
+    # Held back only if it could become payable: an unreviewed cancelled visit or trial is simply not payable.
+    review = bool(a and a.status in REVIEW_STATUSES) and not cancelled and v.kind != "trial"
     return PayableVisit(v.id, v.price_paise, int((v.ends_at - v.starts_at).total_seconds() // 60),
-                        a.worked_minutes if a and a.check_out_at else None, v.kind, v.status in ("cancelled", "missed"),
-                        bool(a and a.status == "needs_review"))
+                        a.worked_minutes if a and a.check_out_at else None, v.kind, cancelled, review)
 
 
 def run_cycle(db: Session, start: date) -> int:
@@ -105,6 +111,18 @@ def decide(db: Session, actor: Actor, payout_id: int, approve: bool, bank_refere
     return p
 
 
+def held_items(db: Session, p: Payout) -> list[dict]:
+    """G3: bookings of this chef and cycle held back because their attendance still awaits review."""
+    share_pct = settings_svc.load(db).int("chef_share_pct")
+    lo, hi = _bounds(p.cycle_start)
+    q = (select(Visit).join(AttendanceRecord, AttendanceRecord.visit_id == Visit.id)
+         .where(Visit.chef_id == p.chef_id, Visit.starts_at >= lo, Visit.starts_at < hi,
+                AttendanceRecord.status.in_(REVIEW_STATUSES))
+         .order_by(Visit.starts_at))
+    return [{"visitId": str(v.id), "date": v.starts_at.isoformat(), "amount": (v.price_paise * share_pct // 100) / 100}
+            for v in db.scalars(q) if _payable(db, v).needs_review]
+
+
 def payout_json(db: Session, p: Payout, detail: bool = False) -> dict:
     name = db.scalar(select(User.full_name).join(Chef, Chef.user_id == User.id).where(Chef.id == p.chef_id))
     out = {"id": str(p.id), "chefId": str(p.chef_id), "chefName": name or "", "period": f"{p.cycle_start:%d %b} – {p.cycle_start + timedelta(days=6):%d %b %Y}",
@@ -112,25 +130,72 @@ def payout_json(db: Session, p: Payout, detail: bool = False) -> dict:
            "heldAmount": p.held_paise / 100, "status": p.status, "bankReference": p.bank_reference,
            "approvedAt": p.approved_at.isoformat() if p.approved_at else None}
     if detail:
+        out["approvedBy"] = db.scalar(select(User.full_name).where(User.id == p.approved_by)) if p.approved_by else None
+        out["paidAt"] = p.paid_at.isoformat() if p.paid_at else None
+        out["heldItems"] = held_items(db, p)
         out["items"] = [{"id": str(i.id), "visitId": str(i.visit_id) if i.visit_id else None, "amount": i.amount_paise / 100,
                          "kind": i.kind, "note": i.note} for i in db.scalars(select(PayoutItem).where(PayoutItem.payout_id == p.id))]
     return out
 
 
-def chef_earnings(db: Session, chef: Chef) -> dict:
-    s = settings_svc.load(db)
-    start = cycle_start(datetime.now(timezone.utc))
+def statement(db: Session, chef: Chef, start: date) -> list[dict]:
+    """G4: every booking of this chef in the cycle, with its pay status and amount, using the same rules as run_cycle.
+    Status: earned (payable, cycle not run yet) | pending/approved/paid/rejected (on a payout) | held (attendance under
+    review) | not_payable (cancelled, missed, trial or nothing worked) | upcoming (not worked yet)."""
+    share_pct = settings_svc.load(db).int("chef_share_pct")
     lo, hi = _bounds(start)
-    visits = db.scalars(select(Visit).where(Visit.chef_id == chef.id, Visit.starts_at >= lo, Visit.starts_at < hi,
-                                            Visit.status == "completed")).all()
-    entries, total = [], 0
-    for v in visits:
-        amt = chef_share(_payable(db, v), s.int("chef_share_pct"))
+    rows = []
+    for v in db.scalars(select(Visit).where(Visit.chef_id == chef.id, Visit.starts_at >= lo, Visit.starts_at < hi)
+                        .order_by(Visit.starts_at)):
+        item = db.scalar(select(PayoutItem).where(PayoutItem.visit_id == v.id))
+        pv = _payable(db, v)
+        amt = chef_share(pv, share_pct)
+        if item:
+            status, paise = db.scalar(select(Payout.status).where(Payout.id == item.payout_id)), item.amount_paise
+        elif amt is None:
+            status, paise = "held", v.price_paise * share_pct // 100
+        elif amt > 0:
+            status, paise = "earned", amt
+        elif pv.cancelled or pv.kind == "trial" or pv.worked_minutes is not None:
+            status, paise = "not_payable", 0
+        else:
+            status, paise = "upcoming", 0
         cust = db.scalar(select(User.full_name).where(User.id == v.customer_id))
-        entries.append({"id": str(v.id), "date": v.starts_at.isoformat(), "customerName": cust or "Customer", "kind": v.kind,
-                        "amount": (amt or 0) / 100, "status": "held" if amt is None else "pending"})
-        total += amt or 0
+        rows.append({"id": str(v.id), "date": v.starts_at.isoformat(), "customerName": cust or "Customer", "kind": v.kind,
+                     "visitStatus": v.status, "status": status, "amountPaise": paise, "amount": paise / 100})
+    return rows
+
+
+def statement_csv(rows: list[dict]) -> str:
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Visit", "Scheduled (IST)", "Customer", "Type", "Visit status", "Pay status", "Amount (Rs)"])
+    for r in rows:
+        w.writerow([r["id"], datetime.fromisoformat(r["date"]).astimezone(IST).strftime("%Y-%m-%d %H:%M"), r["customerName"],
+                    r["kind"], r["visitStatus"], r["status"], f"{r['amountPaise'] / 100:.2f}"])
+    return buf.getvalue()
+
+
+def statement_token(chef_id: int, start: date, expires: int) -> str:
+    """Signed, short-lived statement link so the phone's browser can download it without a bearer token."""
+    from app.core.security import secret_hash
+    return secret_hash(f"statement:{chef_id}:{start.isoformat()}:{expires}")
+
+
+def chef_earnings(db: Session, chef: Chef) -> dict:
+    from app.core import clock
+    from app.core.config import settings
+    start = cycle_start(clock.now())
+    entries = statement(db, chef, start)
+    earning = [e for e in entries if e["status"] in ("earned", "pending", "approved", "paid")]
     pending = db.scalar(select(func.coalesce(func.sum(Payout.amount_paise), 0)).where(Payout.chef_id == chef.id,
                                                                                     Payout.status.in_(("pending", "approved"))))
-    return {"period": f"{start:%d %b} – {start + timedelta(days=6):%d %b %Y}", "total": total / 100, "visits": len(visits),
-            "pendingPayout": pending / 100, "entries": entries}
+    exp = int((clock.now() + timedelta(minutes=10)).timestamp())
+    url = (f"{settings.API_V1_STR}/chefs/statements/{chef.id}?cycleStart={start.isoformat()}&expires={exp}"
+           f"&sig={statement_token(chef.id, start, exp)}")
+    return {"period": f"{start:%d %b} – {start + timedelta(days=6):%d %b %Y}", "cycleStart": start.isoformat(),
+            "total": sum(e["amountPaise"] for e in earning) / 100, "visits": len(earning),
+            "heldAmount": sum(e["amountPaise"] for e in entries if e["status"] == "held") / 100,
+            "pendingPayout": pending / 100, "entries": entries, "statementUrl": url}

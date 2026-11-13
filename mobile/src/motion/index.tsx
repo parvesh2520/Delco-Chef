@@ -11,6 +11,9 @@ let reduced = false;
 AccessibilityInfo.isReduceMotionEnabled().then((v) => (reduced = v)).catch(() => undefined);
 AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => (reduced = v));
 
+/** Current OS "Reduce motion" setting, for imperative animations outside hooks. */
+export const reducedMotion = () => reduced;
+
 export function useReducedMotion(): boolean {
   const [value, setValue] = useState(reduced);
   useEffect(() => {

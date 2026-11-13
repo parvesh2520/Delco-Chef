@@ -26,6 +26,8 @@ engine = create_engine(
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_recycle=300,  # Neon closes idle connections; recycle before that happens.
+    # H7: database errors otherwise carry every bound value (names, emails, notes) into tracebacks and logs.
+    hide_parameters=True,
 )
 
 # Liveness check only for connections idle longer than this. A connection used moments ago is alive, and with a remote

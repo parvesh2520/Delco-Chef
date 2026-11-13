@@ -8,5 +8,6 @@ export * from './Dialog';
 export * from './Display';
 export * from './Media';
 export * from './RealMap';
+export * from './LiveMap';
 export * from './Toast';
 export * from './NotificationCentre';

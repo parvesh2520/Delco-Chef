@@ -16,7 +16,7 @@ export default function ChefDocuments() {
   const invalidate = useAdminInvalidate();
   const query = useQuery({ queryKey: ['admin', 'chefs'], queryFn: adminService.listChefApplications, select: (cs: Chef[]) => cs.find((c) => c.id === id) ?? null });
   const reveal = useMutation({
-    mutationFn: (doc: ChefDocument) => adminService.revealDocument(id, doc.id),
+    mutationFn: (doc: ChefDocument) => adminService.revealDocument(id, doc.id, 'Chef application verification'),
     onSuccess: (res, doc) => {
       setRevealed((r) => ({ ...r, [doc.id]: res.value ?? 'Image only — open the file' }));
       setTarget(null);

@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     SANDBOX_WEBHOOK_SECRET: str = "dev-sandbox-webhook-secret"
 
     MEDIA_ROOT: str = "media"
+    # Persistent private object storage (S3-compatible: Cloudflare R2, AWS S3, Backblaze B2…). When S3_BUCKET is set,
+    # photos, chef documents and data exports go there instead of MEDIA_ROOT. Leave empty for local disk.
+    S3_BUCKET: str | None = None
+    S3_ENDPOINT_URL: str | None = None  # R2: https://<account-id>.r2.cloudflarestorage.com ; AWS: leave empty
+    S3_REGION: str = "auto"             # R2: auto ; AWS: e.g. ap-south-1
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
     RUN_WORKERS: bool = True  # background outbox / location flush / scheduled jobs
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore")

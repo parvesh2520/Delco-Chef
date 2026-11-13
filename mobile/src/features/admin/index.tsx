@@ -194,3 +194,5 @@ export function StageSummaryCard({ s }: { s: import('../../services').StageSumma
     </Card>
   );
 }
+
+export { EvidencePhoto } from './EvidencePhoto';

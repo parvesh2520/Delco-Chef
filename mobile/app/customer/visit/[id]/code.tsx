@@ -6,15 +6,29 @@ import { Notice, QueryView, Screen, Txt } from '../../../../src/components';
 import { visitService } from '../../../../src/services';
 import { colors, fonts, radius } from '../../../../src/theme';
 
-/** Four-digit visit check-in code the customer shares with the chef at the door. */
+const NO_CODE: Record<string, string> = {
+  pending_assignment: 'Your code appears once a chef is assigned.',
+  needs_manual_assignment: 'Your code appears once a chef is assigned.',
+  checked_in: 'Your chef has checked in. The code has been used.',
+  completed: 'This visit is complete.',
+  customer_unavailable: 'Your chef reported that you were not available. Delco will be in touch.',
+  missed: 'This visit was missed. Delco will be in touch.',
+  cancelled: 'This visit was cancelled.',
+};
+
+/** Four-digit visit check-in code the customer shares with the chef at the door. Shown only to this visit's customer,
+ * only until it is used; the server checks it and allows 5 wrong tries. */
 export default function CheckInCode() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const query = useQuery({ queryKey: ['visit', id], queryFn: () => visitService.get(id) });
+  // Refresh while the code is on screen, so the customer sees the chef's check-in as soon as it happens.
+  const query = useQuery({ queryKey: ['visit', id], queryFn: () => visitService.get(id),
+    refetchInterval: (q) => (q.state.data?.checkInCode ? 15_000 : false) });
   return (
-    <Screen eyebrow="Check-in" title="Your visit code" subtitle="Share this code with your chef when they arrive.">
+    <Screen eyebrow="Check-in" title="Your visit code" subtitle="Share this code with your chef when they arrive."
+      refreshing={query.isRefetching} onRefresh={query.refetch}>
       <QueryView query={query} empty={{ title: 'Visit not found' }}>
         {(v) => !v.checkInCode ? (
-          <Notice icon="checkmark-circle-outline">{v.status === 'pending_assignment' ? 'Your code appears once a chef is assigned.' : 'Your chef has checked in. The code has been used.'}</Notice>
+          <Notice icon="checkmark-circle-outline">{NO_CODE[v.status] ?? 'There is no code to show for this visit.'}</Notice>
         ) : (
           <>
             <View style={styles.row} accessibilityLabel={`Check-in code ${v.checkInCode.split('').join(' ')}`}>

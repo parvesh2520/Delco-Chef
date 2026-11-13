@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { haptic, PressableScale, PulseDot, useLoop } from '../motion';
+import { haptic, PressableScale, PulseDot, reducedMotion, useLoop } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing } from '../theme';
 import { humanize, statusTone, toneColors, type Tone } from '../utils';
@@ -59,13 +59,27 @@ const LIVE = ['in_progress', 'travelling', 'cooking', 'arrived', 'checked_in'];
 export function Badge({ status, label, tone }: { status?: string; label?: string; tone?: Tone }) {
   const t = toneColors[tone ?? statusTone(status ?? '')];
   const live = !!status && LIVE.some((k) => status.includes(k));
+  const text = label ?? humanize(status ?? '');
+  // When the status changes in place (pending → paid), the new pill fades and pops in instead of snapping.
+  const v = React.useRef(new Animated.Value(1)).current;
+  const prev = React.useRef(text);
+  React.useEffect(() => {
+    if (prev.current === text) return;
+    prev.current = text;
+    if (reducedMotion()) return;
+    v.setValue(0);
+    Animated.spring(v, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 10 }).start();
+  }, [text, v]);
   return (
-    <View style={[styles.badge, { backgroundColor: t.bg }, live && styles.badgeLive]}>
+    <Animated.View
+      style={[styles.badge, { backgroundColor: t.bg }, live && styles.badgeLive,
+        { opacity: v, transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}
+    >
       {live && <PulseDot color={t.fg} size={6} />}
       <Txt variant="caption" color={t.fg} style={{ fontWeight: '700' }}>
-        {label ?? humanize(status ?? '')}
+        {text}
       </Txt>
-    </View>
+    </Animated.View>
   );
 }
 

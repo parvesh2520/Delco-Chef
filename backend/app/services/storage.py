@@ -32,7 +32,10 @@ class LocalStorage:
         return key
 
     def get(self, key: str) -> bytes:
-        return self._path(key).read_bytes()
+        try:
+            return self._path(key).read_bytes()
+        except FileNotFoundError:  # e.g. a Render redeploy wiped the local disk
+            raise AppError("FILE_NOT_FOUND", "This file is no longer available.", 404) from None
 
     def delete(self, key: str) -> None:
         try:
@@ -41,7 +44,49 @@ class LocalStorage:
             pass
 
 
-storage = LocalStorage(settings.MEDIA_ROOT)
+class S3Storage:
+    """Any S3-compatible bucket (Cloudflare R2, AWS S3, Backblaze B2, MinIO…). The bucket stays PRIVATE: nothing is
+    ever served from it directly. The API reads the bytes after its own permission check (chef, owning customer or
+    Admin), so no URL to a photo works without a valid login."""
+
+    def __init__(self, bucket: str, client):
+        self.bucket, self.client = bucket, client
+
+    @classmethod
+    def from_settings(cls) -> "S3Storage":
+        import boto3
+        from botocore.config import Config
+        client = boto3.client("s3", endpoint_url=settings.S3_ENDPOINT_URL or None, region_name=settings.S3_REGION,
+                              aws_access_key_id=settings.S3_ACCESS_KEY_ID, aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
+                              config=Config(signature_version="s3v4", retries={"max_attempts": 3, "mode": "standard"},
+                                            connect_timeout=5, read_timeout=15))
+        return cls(settings.S3_BUCKET, client)
+
+    def put(self, prefix: str, data: bytes, ext: str) -> str:
+        key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
+        ctype = {"png": "image/png", "jpg": "image/jpeg", "json": "application/json"}.get(ext, "application/octet-stream")
+        self.client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=ctype)
+        return key
+
+    def get(self, key: str) -> bytes:
+        try:
+            return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        except self.client.exceptions.NoSuchKey:
+            raise AppError("FILE_NOT_FOUND", "This file is no longer available.", 404) from None
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)  # S3 deletes are idempotent
+
+
+def build_storage():
+    """S3-compatible storage when a bucket is configured; otherwise local disk (development, Docker). Render's local
+    disk is wiped on every deploy, so production should set the S3_* variables."""
+    if settings.S3_BUCKET:
+        return S3Storage.from_settings()
+    return LocalStorage(settings.MEDIA_ROOT)
+
+
+storage = build_storage()
 
 
 def validate_image(data: bytes, content_type: str | None) -> tuple[str, str]:

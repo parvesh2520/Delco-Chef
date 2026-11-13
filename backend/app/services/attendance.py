@@ -1,4 +1,5 @@
 """Part D: check-in / check-out with geofence, window, GPS quality, single-use code, selfie, idempotency."""
+import math
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -51,11 +52,22 @@ def upload_photo(db: Session, chef: Chef, visit_id: int, kind: str, data: bytes,
     return p
 
 
-def _check_position(db: Session, v: Visit, chef: Chef, kind: str, pos: dict, s) -> float:
+def _number(value) -> float | None:
     try:
-        lat, lng, acc = float(pos["lat"]), float(pos["lng"]), float(pos["accuracy"])
-    except (KeyError, TypeError, ValueError):
-        raise _fail(db, v, chef, kind, pos, AppError("LOCATION_REQUIRED", "Location is required. Turn on location and retry.", 422)) from None
+        x = float(value)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None  # "nan" / "inf" would slip past every comparison below
+
+
+def _check_position(db: Session, v: Visit, chef: Chef, kind: str, pos: dict, s) -> float:
+    lat, lng = _number(pos.get("lat")), _number(pos.get("lng"))
+    if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180) or (lat == 0 and lng == 0):
+        raise _fail(db, v, chef, kind, pos, AppError("LOCATION_REQUIRED", "Location is required. Turn on location and retry.", 422))
+    acc = _number(pos.get("accuracy"))
+    if acc is None or acc < 0:  # a reading without a reported accuracy can't be trusted: ask for a fresh fix
+        raise _fail(db, v, chef, kind, pos, AppError("GPS_ACCURACY_POOR", "Your phone did not report GPS accuracy. Wait for a GPS fix and retry.",
+                                                     422, extra={"retry": True}))
     if acc > s.float("max_gps_accuracy_m"):
         raise _fail(db, v, chef, kind, pos, AppError("GPS_ACCURACY_POOR", f"GPS signal is weak (±{acc:.0f} m). Move to an open spot and retry.", 422,
                                                      extra={"retry": True}))
@@ -84,7 +96,15 @@ def _check_code(db: Session, v: Visit, chef: Chef, kind: str, pos: dict, code: s
         v.code_attempts += 1
         left = max_attempts - v.code_attempts
         if left <= 0:
-            notify_admins(db, "attendance_exception", "Check-in locked", f"Visit {v.id}: too many wrong check-in codes.", "/admin/attendance")
+            # The Admin must see the lock in the review list, not only as a notification: record it as an exception.
+            rec = db.scalar(select(AttendanceRecord).where(AttendanceRecord.visit_id == v.id))
+            if rec is None:
+                rec = AttendanceRecord(visit_id=v.id, chef_id=chef.id)
+                db.add(rec)
+            rec.status, rec.exception = "exception", "code_locked"
+            db.flush()
+            notify_admins(db, "attendance_exception", "Check-in locked", f"Visit {v.id}: too many wrong check-in codes.",
+                          f"/admin/attendance/{rec.id}")
         raise _fail(db, v, chef, kind, pos, AppError("CHECKIN_CODE_INVALID", f"Code does not match. {max(left, 0)} tries left.", 422,
                                                      extra={"attemptsRemaining": max(left, 0)}))
 
@@ -164,9 +184,10 @@ def check_out(db: Session, chef: Chef, visit_id: int, body: dict) -> dict:
     if food is None:
         raise _fail(db, v, chef, "check_out", body, AppError("FOOD_PHOTO_REQUIRED", "A photo of the food cooked is required to check out.", 422))
     t = clock.now()
-    dist = None
-    if body.get("lat") is not None and body.get("lng") is not None:
-        dist = round(haversine_km(float(body["lat"]), float(body["lng"]), v.lat, v.lng) * 1000, 1)
+    dist = None  # check-out position is recorded for audit only; an unusable reading is simply not recorded
+    lat, lng = _number(body.get("lat")), _number(body.get("lng"))
+    if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180:
+        dist = round(haversine_km(lat, lng, v.lat, v.lng) * 1000, 1)
     worked = int((t - rec.check_in_at).total_seconds() // 60)
     scheduled = int((v.ends_at - v.starts_at).total_seconds() // 60)
     rec.check_out_at, rec.check_out_selfie_id, rec.food_photo_id, rec.worked_minutes, rec.check_out_distance_m = t, selfie.id, food.id, worked, dist
@@ -238,19 +259,47 @@ def auto_close(db: Session) -> int:
     return n
 
 
-def resolve(db: Session, actor: Actor, record_id: int, resolution: str, worked_minutes: int | None) -> AttendanceRecord:
+DECISION_PREFIX = {"approve": "Approved: ", "reject": "Rejected: "}
+
+
+def decision_of(rec: AttendanceRecord) -> str | None:
+    """The review decision, written as the prefix of the resolution note (older records have none)."""
+    if rec.status != "resolved":
+        return None
+    for decision, prefix in DECISION_PREFIX.items():
+        if (rec.resolution or "").startswith(prefix):
+            return {"approve": "approved", "reject": "rejected"}[decision]
+    return "approved"  # resolved before decisions existed: those were approvals
+
+
+def resolve(db: Session, actor: Actor, record_id: int, resolution: str, worked_minutes: int | None,
+            decision: str = "approve") -> AttendanceRecord:
+    """D5: an Admin approves (optionally correcting worked minutes) or rejects (reason required; the visit then counts
+    0 worked minutes, so it is not paid). Who, when, what changed and why are kept on the record and in the audit log.
+    A decided record is final: a second decision is refused, so the history can't be overwritten silently."""
     rec = db.scalar(select(AttendanceRecord).where(AttendanceRecord.id == record_id).with_for_update())
     if not rec:
         raise not_found("Attendance record")
-    if not (resolution or "").strip():
-        raise AppError("VALIDATION_ERROR", "A resolution note is required.", 422, fields={"resolution": "required"})
+    if decision not in DECISION_PREFIX:
+        raise AppError("VALIDATION_ERROR", "Decision must be approve or reject.", 422, fields={"decision": "invalid"})
+    if rec.status == "resolved":
+        raise AppError("ATTENDANCE_ALREADY_REVIEWED", "This record has already been reviewed.", 409)
+    if rec.status not in ("needs_review", "exception"):
+        raise AppError("ATTENDANCE_NOT_REVIEWABLE", "Only records that need review can be approved or rejected.", 409)
+    note = (resolution or "").strip()
+    if len(note) < (5 if decision == "reject" else 1):
+        raise AppError("VALIDATION_ERROR", "A reason is required." if decision == "reject" else "A resolution note is required.", 422,
+                       fields={"resolution": "required"})
     before = rec.worked_minutes
+    if decision == "reject":
+        worked_minutes = 0 if rec.check_in_at else None  # rejected: nothing worked counts towards pay
     if worked_minutes is not None:
         if not 0 <= worked_minutes <= 600:
             raise AppError("VALIDATION_ERROR", "Worked minutes must be between 0 and 600.", 422)
         rec.worked_minutes = worked_minutes
-    rec.status, rec.resolution, rec.resolved_by, rec.resolved_at = "resolved", resolution.strip(), actor.id, clock.now()
-    audit(db, actor, "Resolved attendance", f"Attendance {rec.id}", reason=resolution,
-          meta={"worked_minutes_before": before, "worked_minutes_after": rec.worked_minutes})
+    rec.status, rec.resolved_by, rec.resolved_at = "resolved", actor.id, clock.now()
+    rec.resolution = (DECISION_PREFIX[decision] + note)[:300]
+    audit(db, actor, "Approved attendance" if decision == "approve" else "Rejected attendance", f"Attendance {rec.id}", reason=note,
+          meta={"decision": decision, "exception": rec.exception, "worked_minutes_before": before, "worked_minutes_after": rec.worked_minutes})
     db.commit()
     return rec

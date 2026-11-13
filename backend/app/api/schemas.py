@@ -92,6 +92,11 @@ class ReasonIn(In):
     reason: str | None = Field(default=None, max_length=300)
 
 
+class RevealIn(In):
+    """H6: every reveal records why it was needed."""
+    reason: str = Field(min_length=3, max_length=300)
+
+
 class RespondIn(In):
     accept: bool
     reason: str | None = Field(default=None, max_length=300)
@@ -191,6 +196,7 @@ class MoveIn(In):
 class ResolveIn(In):
     resolution: str = Field(max_length=300)
     workedMinutes: int | None = None
+    decision: Literal["approve", "reject"] = "approve"
 
 
 class SettingsIn(In):

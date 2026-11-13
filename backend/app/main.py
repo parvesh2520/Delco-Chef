@@ -23,7 +23,10 @@ async def lifespan(_: FastAPI):
     if settings.RUN_WORKERS:
         worker.start()
     from app.services.gateway import get_gateway
-    log.info("Started %s %s (%s), payment gateway: %s", settings.PROJECT_NAME, settings.VERSION, settings.ENVIRONMENT, get_gateway().name)
+    log.info("Started %s %s (%s), payment gateway: %s, file storage: %s", settings.PROJECT_NAME, settings.VERSION,
+             settings.ENVIRONMENT, get_gateway().name, "s3" if settings.S3_BUCKET else "local disk")
+    if settings.is_production and not settings.S3_BUCKET:
+        log.warning("Photos and documents are on the local disk, which this host may wipe on redeploy. Set S3_BUCKET.")
     yield
     worker.stop()
     from app.core.database import SessionLocal

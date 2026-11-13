@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, not_found
 from app.core.security import decrypt, encrypt
-from app.models import (Address, AttendanceRecord, Chef, ChefBankAccount, ChefDocument, Consent, CustomerProfile,
-                        DataExport, LocationPoint, Notification, Payment, ServiceInterest, ServiceRequest, Subscription,
+from app.models import (Address, AttendanceRecord, ChefBankAccount, ChefDocument, Consent, CustomerProfile, DataExport,
+                        LocationPoint, Notification, Payment, PaymentEvent, ServiceInterest, ServiceRequest, Subscription,
                         SubscriptionDay, Trial, User, Visit)
 from app.services import auth as auth_svc
 from app.services.events import Actor, audit, notify
@@ -101,6 +101,34 @@ def export_json(e: DataExport | None) -> dict:
     return {"id": str(e.id), "status": status, "requestedAt": iso(e.requested_at), "readyAt": iso(e.ready_at), "downloadUrl": url}
 
 
+# Contact fields a payment gateway echoes back in webhook payloads (e.g. Razorpay's payment entity).
+_GATEWAY_PII_KEYS = {"contact", "email", "phone", "name", "customer_details", "billing_address", "shipping_address",
+                     "address", "vpa", "customer"}
+
+
+def _scrub(obj):
+    if isinstance(obj, dict):
+        return {k: ("[deleted]" if k in _GATEWAY_PII_KEYS else _scrub(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_scrub(v) for v in obj]
+    return obj
+
+
+def _discard_export(e: DataExport) -> None:
+    if e.storage_key:
+        storage.delete(e.storage_key)
+    e.storage_key, e.status = None, "expired"
+
+
+def purge_expired_exports(db: Session) -> int:
+    """Retention: export files live 7 days; afterwards the file is deleted and only the request row stays."""
+    rows = db.scalars(select(DataExport).where(DataExport.storage_key.is_not(None), DataExport.expires_at < now())).all()
+    for e in rows:
+        _discard_export(e)
+    db.commit()
+    return len(rows)
+
+
 def delete_account(db: Session, u: User, reason: str | None) -> None:
     """H2: personal fields erased; financial rows kept, now linked only to an anonymous user id."""
     if db.scalar(select(Subscription.id).where(Subscription.customer_id == u.id, Subscription.status == "active")):
@@ -121,6 +149,12 @@ def delete_account(db: Session, u: User, reason: str | None) -> None:
     for r in db.scalars(select(ServiceRequest).where(ServiceRequest.customer_id == u.id)):
         r.allergy_notes, r.dietary_notes, r.instructions = None, None, None
     db.execute(update(Notification).where(Notification.user_id == u.id).values(title="—", body="—", href=None))
+    # Payment rows stay (financial record) but the gateway's copy of the contact details does not.
+    pay_ids = select(Payment.id).where(Payment.customer_id == u.id)
+    for ev in db.scalars(select(PaymentEvent).where(PaymentEvent.payment_id.in_(pay_ids))):
+        ev.payload = _scrub(ev.payload)
+    for e in db.scalars(select(DataExport).where(DataExport.user_id == u.id)):
+        _discard_export(e)
     u.full_name, u.email, u.phone_enc, u.phone_hmac = None, None, None, None
     u.status, u.deleted_at = "deleted", t
     auth_svc.revoke_all(db, u.id)

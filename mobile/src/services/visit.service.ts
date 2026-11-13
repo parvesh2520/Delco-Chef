@@ -5,7 +5,8 @@ import { ApiError, api } from './api';
 export interface Position {
   lat: number;
   lng: number;
-  accuracy: number;
+  /** As reported by the OS, in metres. Absent when the OS did not report one (the server then asks for a new fix). */
+  accuracy?: number;
   deviceId?: string;
 }
 
@@ -35,7 +36,8 @@ export const visitService = {
       return await api.get<TrackingSnapshot>(`/visits/${id}/tracking`);
     } catch (e) {
       if (e instanceof ApiError && TRACKING_CODES.includes(e.code)) {
-        return { visitId: id, available: false, reason: e.message, code: e.code, updatedAt: new Date().toISOString() };
+        return { visitId: id, available: false, reason: e.message, code: e.code, updatedAt: null,
+                 availableAt: typeof e.extra?.availableAt === 'string' ? e.extra.availableAt : undefined };
       }
       throw e;
     }

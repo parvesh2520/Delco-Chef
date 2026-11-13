@@ -29,3 +29,9 @@ services:
       - { key: RAZORPAY_KEY_ID, sync: false }
       - { key: RAZORPAY_KEY_SECRET, sync: false }
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
+      # Persistent private photo storage (S3-compatible, e.g. Cloudflare R2). Without it, photos are lost on redeploy.
+      - { key: S3_BUCKET, sync: false }
+      - { key: S3_ENDPOINT_URL, sync: false }
+      - { key: S3_ACCESS_KEY_ID, sync: false }
+      - { key: S3_SECRET_ACCESS_KEY, sync: false }
+      - { key: S3_REGION, value: auto }

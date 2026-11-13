@@ -43,7 +43,7 @@ def _schema():
 def _clean():
     clock.frozen = None
     settings_cache.invalidate()  # tables are truncated below, outside save_section()
-    tracking._buffer.clear(), tracking._last.clear(), tracking._owner.clear()
+    tracking._buffer.clear(), tracking._last.clear(), tracking._owner.clear(), tracking._dirty.clear()
     tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
     with engine.begin() as c:
         c.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

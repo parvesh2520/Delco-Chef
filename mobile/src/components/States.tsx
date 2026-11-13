@@ -78,7 +78,27 @@ export function QueryView<T>({
   const data = query.data as T;
   const emptyNow = data == null || (isEmpty ? isEmpty(data) : Array.isArray(data) && data.length === 0);
   if (emptyNow) return <EmptyState title={empty?.title ?? 'Nothing here yet'} message={empty?.message} icon={empty?.icon} action={empty?.action} />;
-  return <>{children(data as NonNullable<T>)}</>;
+  return <Staggered>{children(data as NonNullable<T>)}</Staggered>;
+}
+
+/**
+ * Each top-level item a screen renders from its data (cards in a list, sections) rises in shortly after the previous
+ * one. Only the first level is wrapped: rows and grids inside an item keep their own layout. Items mount once, so
+ * background refetches do not replay the entrance.
+ */
+function Staggered({ children }: { children: React.ReactNode }) {
+  const top = React.isValidElement<{ children?: React.ReactNode }>(children) && children.type === React.Fragment ? children.props.children : children;
+  const items = React.Children.toArray(top);
+  if (items.length < 2) return <>{children}</>;
+  return (
+    <>
+      {items.map((c, i) => (
+        <FadeInUp key={(c as { key?: React.Key }).key ?? i} index={i} distance={10}>
+          {c}
+        </FadeInUp>
+      ))}
+    </>
+  );
 }
 
 /** Large icon + title + message, used for success, pending, failure and "coming soon" screens. */

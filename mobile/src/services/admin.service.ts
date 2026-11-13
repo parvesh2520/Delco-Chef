@@ -1,6 +1,6 @@
 // Ops / Super Admin. The UI hides actions by role for convenience; FastAPI enforces every permission.
 import type {
-  AdminAccount, AdminDashboardStats, AssignmentHistoryEntry, AttendanceRecord, AuditLog, Chef, ChefSuggestion, Payout, RequestStatus,
+  AdminAccount, AdminDashboardStats, AssignmentHistoryEntry, AttendanceRecord, AuditLog, Chef, ChefSuggestion, Payout, PayoutDetail, RequestStatus,
   ServiceRequest, SettingsSection, SettingsSectionKey, Subscription,
 } from '../types';
 import { api } from './api';
@@ -69,8 +69,8 @@ export const adminService = {
 
   listAttendance: () => api.get<AttendanceRecord[]>('/admin/attendance'),
   getAttendance: (id: string) => api.get<AttendanceRecord>(`/admin/attendance/${id}`),
-  resolveAttendance: (id: string, resolution: string, workedMinutes?: number) =>
-    api.post<AttendanceRecord>(`/admin/attendance/${id}/resolve`, { resolution, workedMinutes }),
+  resolveAttendance: (id: string, resolution: string, workedMinutes?: number, decision: 'approve' | 'reject' = 'approve') =>
+    api.post<AttendanceRecord>(`/admin/attendance/${id}/resolve`, { resolution, workedMinutes, decision }),
 
   listPaymentLinks: () => api.get<{ id: string; paymentId: string; amount: number; status: string; expiresAt: string; customerName: string }[]>('/admin/payment-links'),
 
@@ -94,7 +94,7 @@ export const adminService = {
   listAuditLogs: () => api.get<AuditLog[]>('/admin/audit-logs'),
 
   listPayouts: () => api.get<Payout[]>('/admin/payouts'),
-  getPayout: (id: string) => api.get<Payout & { items: { id: string; amount: number; kind: string; note?: string }[] }>(`/admin/payouts/${id}`),
+  getPayout: (id: string) => api.get<PayoutDetail>(`/admin/payouts/${id}`),
   decidePayout: (id: string, approve: boolean) => api.post<Payout>(`/admin/payouts/${id}/decision`, { approve }),
   markPayoutPaid: (id: string, bankReference: string) => api.post<Payout>(`/admin/payouts/${id}/decision`, { approve: true, bankReference }),
   adjustPayout: (id: string, amountPaise: number, reason: string) => api.post<Payout>(`/admin/payouts/${id}/adjustments`, { amountPaise, reason }),

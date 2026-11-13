@@ -74,3 +74,31 @@ def approved_chef(chef: Chef = Depends(current_chef)) -> Chef:
     if chef.status != "approved":
         raise AppError("CHEF_NOT_APPROVED", "Your application has not been approved yet.", 403)
     return chef
+
+
+def approved_chef_id(request: Request, db: Session) -> int:
+    """Same checks as current + chef_only + approved_chef, in one query and without loading ORM entities.
+    Used by the high-frequency location ingest (E2: cheap per call). Called inside the endpoint, not as a dependency:
+    see `app.api.v1.endpoints.visits.ingest` for why."""
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        raise AppError("UNAUTHENTICATED", "Sign in to continue.", 401)
+    try:
+        payload = decode_access_token(header[7:])
+    except jwt.ExpiredSignatureError:
+        raise AppError("TOKEN_EXPIRED", "Session expired.", 401) from None
+    except jwt.PyJWTError:
+        raise AppError("UNAUTHENTICATED", "Invalid session.", 401) from None
+    row = db.execute(select(User.status, User.role, auth_svc.session_active_clause(payload["sid"]), Chef.id, Chef.status)
+                     .outerjoin(Chef, Chef.user_id == User.id).where(User.id == int(payload["sub"]))).first()
+    if not row or row[0] != "active" or row[1] != payload.get("role"):
+        raise AppError("UNAUTHENTICATED", "Invalid session.", 401)
+    if not row[2]:
+        raise AppError("SESSION_REVOKED", "You have been signed out.", 401)
+    if row[1] != "chef":
+        raise AppError("FORBIDDEN", "You do not have access to this.", 403)
+    if row[3] is None:
+        raise AppError("CHEF_NOT_FOUND", "Chef profile not found.", 404)
+    if row[4] != "approved":
+        raise AppError("CHEF_NOT_APPROVED", "Your application has not been approved yet.", 403)
+    return row[3]

@@ -1,6 +1,6 @@
 // Chef registration, assignments, off-days, earnings.
 import type { Assignment, BankDetails, Chef, Earnings } from '../types';
-import { api } from './api';
+import { absoluteUrl, api } from './api';
 
 export type ChefDocKind = 'aadhaar' | 'pan' | 'police_verification' | 'photo';
 
@@ -50,6 +50,6 @@ export const chefService = {
   saveOffDays: (_chefId: string, days: string[]) =>
     api.put<{ days: string[]; conflicts: string[] }>('/chefs/me/off-days', { days }).then((r) => r.days),
 
-  getEarnings: () => api.get<Earnings>('/chefs/me/earnings'),
+  getEarnings: () => api.get<Earnings>('/chefs/me/earnings').then((e) => ({ ...e, statementUrl: absoluteUrl(e.statementUrl) })),
   listAttendance: () => api.get<{ id: string; visitId: string; date: string; workedMinutes?: number; status: string }[]>('/chefs/me/attendance'),
 };

@@ -241,16 +241,29 @@ export interface TrackingSnapshot {
   available: boolean;
   /** Server refusal code when unavailable: TRACKING_NOT_AVAILABLE_YET | TRACKING_NOT_STARTED | TRACKING_ENDED. */
   code?: string;
-  /** No update for longer than the stale threshold → show "Reconnecting…". */
+  /** When the visibility window opens (TRACKING_NOT_AVAILABLE_YET only). */
+  availableAt?: string;
+  /** Visit status (chef_travelling while tracking is available). */
+  status?: string;
+  startsAt?: string;
+  /** No update for longer than staleAfterSec → show "Reconnecting…"; the position is "last seen", not live. */
   stale?: boolean;
+  staleAfterSec?: number;
   pollIntervalSec?: number;
   /** Why tracking is unavailable (chef not travelling, permission off…). */
-  reason?: string;
+  reason?: string | null;
   chefLocation?: LatLng;
   destination?: LatLng;
-  etaMinutes?: number;
+  /** Server-computed: straight-line distance at the admin's average speed (default 20 km/h). null when stale/unknown. */
+  etaMinutes?: number | null;
   distanceKm?: number;
-  updatedAt: string;
+  accuracyM?: number | null;
+  /** Chef is within the check-in radius. */
+  arriving?: boolean;
+  /** Time of the chef's last fix (server clock); null when none has arrived yet. */
+  updatedAt: string | null;
+  /** Age of that fix in seconds when the server answered. */
+  ageSec?: number | null;
 }
 
 // ---------- Payments ----------
@@ -379,12 +392,18 @@ export interface Assignment {
   instructions?: string;
 }
 
+/** G4 pay status of one booking: see backend services/payouts.statement. */
+export type EarningStatus = 'earned' | 'pending' | 'approved' | 'paid' | 'rejected' | 'held' | 'not_payable' | 'upcoming';
+
 export interface Earnings {
   period: string;
+  cycleStart: string;
   total: number;
   visits: number;
+  heldAmount: number;
   pendingPayout: number;
-  entries: { id: string; date: string; customerName: string; amount: number; status: 'pending' | 'paid' }[];
+  statementUrl: string;
+  entries: { id: string; date: string; customerName: string; kind: string; visitStatus: string; amount: number; status: EarningStatus }[];
 }
 
 // ---------- Admin ----------
@@ -417,7 +436,8 @@ export interface AssignmentHistoryEntry {
   at: string;
 }
 
-export type AttendanceException = 'late_check_in' | 'outside_radius' | 'missing_check_out' | 'code_mismatch' | 'customer_unavailable';
+/** Exactly the values the server records (services/attendance.py). */
+export type AttendanceException = 'missing_check_out' | 'unusual_duration' | 'customer_unavailable' | 'code_locked' | 'missed_visit';
 
 export interface AttendanceRecord {
   id: string;
@@ -436,6 +456,25 @@ export interface AttendanceRecord {
   status: 'ok' | 'exception' | 'resolved';
   exception?: AttendanceException;
   resolution?: string;
+  workedMinutes?: number | null;
+  scheduledMinutes?: number;
+  codeAttempts?: number;
+  decision?: 'approved' | 'rejected' | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  /** API paths of the evidence photos (opened with the admin's token; never public URLs). */
+  photos?: { checkInSelfie: string | null; checkOutSelfie: string | null; food: string | null };
+  /** Detail view only: every check-in / check-out attempt as recorded by the server. */
+  events?: AttendanceEvent[];
+}
+
+export interface AttendanceEvent {
+  kind: string;
+  result: string;
+  at: string;
+  accuracyM?: number | null;
+  distanceM?: number | null;
+  deviceId?: string | null;
 }
 
 export interface AdminDashboardStats {
@@ -471,9 +510,20 @@ export interface Payout {
   chefId: string;
   chefName: string;
   period: string;
+  cycleStart: string;
   visits: number;
   amount: number;
+  heldAmount: number;
   status: 'pending' | 'approved' | 'paid' | 'rejected';
+  bankReference?: string | null;
+  approvedAt?: string | null;
+}
+
+export interface PayoutDetail extends Payout {
+  approvedBy?: string | null;
+  paidAt?: string | null;
+  items: { id: string; visitId: string | null; amount: number; kind: 'visit' | 'adjustment'; note?: string | null }[];
+  heldItems: { visitId: string; date: string; amount: number }[];
 }
 
 export type SettingsSectionKey =
