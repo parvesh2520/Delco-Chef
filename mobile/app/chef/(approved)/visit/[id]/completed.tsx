@@ -18,7 +18,7 @@ export default function ChefVisitCompleted() {
         const sec = v.checkInAt && v.checkOutAt ? Math.round((new Date(v.checkOutAt).getTime() - new Date(v.checkInAt).getTime()) / 1000) : undefined;
         return (
           <Screen back={false} footer={<Button title="Back to dashboard" onPress={goHome} />}>
-            <StatusHero tone="success" icon="checkmark-done-circle-outline" title="Visit completed" message={`Great work! ${v.customerName} will be asked to rate this visit.`} />
+            <StatusHero art="cloche" tone="success" icon="checkmark-done-circle-outline" title="Visit completed" message={`Great work! ${v.customerName} will be asked to rate this visit.`} />
             <Card>
               <InfoRow icon="calendar-outline" label="Date" value={formatDate(v.date)} />
               <InfoRow icon="log-in-outline" label="Checked in" value={timeOrDash(v.checkInAt)} />

@@ -8,6 +8,7 @@ import { colors, spacing } from '../theme';
 import { isNetworkError, toneColors, type Tone } from '../utils';
 import { Button } from './Button';
 import { Txt } from './Txt';
+import { artForIcon, Illustration, type Art } from './Illustration';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -22,15 +23,16 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
-export function EmptyState({ icon = 'file-tray-outline', title, message, action }: { icon?: IconName; title: string; message?: string; action?: React.ReactNode }) {
+export function EmptyState({ icon = 'file-tray-outline', art, title, message, action }: { icon?: IconName; art?: Art; title: string; message?: string; action?: React.ReactNode }) {
+  const scene = art ?? artForIcon(icon);
   // The icon gently floats, with a soft shadow that breathes underneath it.
   const v = useLoop(2600);
   return (
     <FadeInUp style={styles.center}>
-      <Animated.View style={[styles.iconCircle, { transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }] }]}>
-        <Ionicons name={icon} size={30} color={colors.purple} />
+      <Animated.View style={[!scene && styles.iconCircle, { transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }] }]}>
+        {scene ? <Illustration art={scene} size={176} /> : <Ionicons name={icon} size={30} color={colors.purple} />}
       </Animated.View>
-      <Animated.View style={[styles.floatShadow, { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.08] }), transform: [{ scaleX: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.8] }) }] }]} />
+      {!scene && <Animated.View style={[styles.floatShadow, { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.08] }), transform: [{ scaleX: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.8] }) }] }]} />}
       <Txt variant="h3" center>{title}</Txt>
       {message && <Txt variant="small" center>{message}</Txt>}
       {action}
@@ -49,8 +51,8 @@ export function ErrorState({ error, onRetry }: { error?: unknown; onRetry?: () =
   }, [message]);
   return (
     <View style={styles.center}>
-      <Animated.View style={[styles.iconCircle, { backgroundColor: colors.errorLight, transform: [{ translateX: x }] }]}>
-        <Ionicons name={offline ? 'cloud-offline-outline' : 'alert-circle-outline'} size={30} color={colors.error} />
+      <Animated.View style={[!offline && styles.iconCircle, !offline && { backgroundColor: colors.errorLight }, { transform: [{ translateX: x }] }]}>
+        {offline ? <Illustration art="plug" size={176} /> : <Ionicons name="alert-circle-outline" size={30} color={colors.error} />}
       </Animated.View>
       <Txt variant="h3" center>{offline ? 'You’re offline' : 'Couldn’t load this'}</Txt>
       <Txt variant="small" center>{message}</Txt>
@@ -91,19 +93,19 @@ function Staggered({ children }: { children: React.ReactNode }) {
   const items = React.Children.toArray(top);
   if (items.length < 2) return <>{children}</>;
   return (
-    <>
+    <View style={{ gap: spacing.md }}>
       {items.map((c, i) => (
         <FadeInUp key={(c as { key?: React.Key }).key ?? i} index={i} distance={10}>
           {c}
         </FadeInUp>
       ))}
-    </>
+    </View>
   );
 }
 
 /** Large icon + title + message, used for success, pending, failure and "coming soon" screens. */
 /** `celebrate` adds a confetti burst for the big moments (onboarding done, payment success, application sent). */
-export function StatusHero({ tone = 'success', icon, title, message, children, celebrate }: { tone?: Tone; icon: IconName; title: string; message?: string; children?: React.ReactNode; celebrate?: boolean }) {
+export function StatusHero({ tone = 'success', icon, art, title, message, children, celebrate }: { tone?: Tone; icon: IconName; art?: Art; title: string; message?: string; children?: React.ReactNode; celebrate?: boolean }) {
   const t = toneColors[tone];
   const ring = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -124,11 +126,17 @@ export function StatusHero({ tone = 'success', icon, title, message, children, c
             { borderColor: t.fg, opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }), transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.6] }) }] },
           ]}
         />
-        <PopIn style={[styles.heroCircle, { backgroundColor: t.bg }]}>
-          <PopIn delay={160}>
-            <Ionicons name={icon} size={46} color={t.fg} />
+        {art ? (
+          <PopIn style={{ marginBottom: spacing.sm }}>
+            <Illustration art={art} size={200} />
           </PopIn>
-        </PopIn>
+        ) : (
+          <PopIn style={[styles.heroCircle, { backgroundColor: t.bg }]}>
+            <PopIn delay={160}>
+              <Ionicons name={icon} size={46} color={t.fg} />
+            </PopIn>
+          </PopIn>
+        )}
       </View>
       <Txt variant="h1" center>{title}</Txt>
       {message && <Txt variant="body" color={colors.textSecondary} center>{message}</Txt>}

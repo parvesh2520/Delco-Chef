@@ -50,7 +50,7 @@ export function Button({ title, onPress, variant = 'primary', icon, loading, dis
       ) : (
         <View style={styles.row}>
           {icon && <Ionicons name={icon} size={small ? 16 : 18} color={p.fg} />}
-          <Txt style={{ fontFamily: fonts.bold, fontSize: small ? 13 : 15 }} color={p.fg}>
+          <Txt style={{ fontFamily: fonts.medium, fontSize: small ? 14 : 16 }} color={p.fg}>
             {title}
           </Txt>
         </View>
@@ -64,10 +64,10 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 22,
     borderRadius: radius.pill,
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  small: { minHeight: 38, paddingHorizontal: 16 },
+  small: { minHeight: 40, paddingHorizontal: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

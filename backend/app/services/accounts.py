@@ -50,7 +50,7 @@ def profile_json(db: Session, u: User) -> dict:
             "householdSize": p.household_size if p else None, "preferredLanguage": p.preferred_language if p else "en",
             "diet": p.diet if p else None, "cuisines": p.cuisines if p else [], "allergies": p.allergies if p else [],
             "allergyNotes": p.allergy_notes if p else None, "consentAcceptedAt": consent.isoformat() if consent else None,
-            "onboarded": bool(p and p.onboarded_at)}
+            "onboarded": bool(p and p.onboarded_at), "memberSince": u.created_at.isoformat() if u.created_at else None}
 
 
 def update_profile(db: Session, u: User, body: dict) -> dict:

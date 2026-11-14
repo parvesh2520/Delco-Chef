@@ -1,12 +1,13 @@
 import React from 'react';
-import { Share } from 'react-native';
+import { Share, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, InfoRow, Notice, QueryView, Screen, Section, Txt } from '../../../src/components';
+import { Badge, Button, Notice, QueryView, Screen, Section, Txt } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
 import { RefundList } from '../../../src/features/payments';
 import { paymentService } from '../../../src/services';
 import type { Payment } from '../../../src/types';
+import { colors, fonts, radius, shadow, spacing } from '../../../src/theme';
 import { formatCurrency, formatDate, formatDateTime } from '../../../src/utils';
 
 const RECEIPT_STATUSES = ['paid', 'refunded', 'partially_refunded'];
@@ -22,29 +23,36 @@ export default function PaymentDetails() {
       <QueryView query={query} empty={{ title: 'Payment not found' }}>
         {(p) => (
           <>
-            <Card tone="cream">
-              <Txt variant="label">Amount</Txt>
-              <Txt variant="h1">{formatCurrency(p.amount)}</Txt>
-              <Badge status={p.status} />
-            </Card>
+            <View style={styles.receipt}>
+              <View style={styles.head}>
+                <Txt variant="label" color={colors.textSecondary}>{hasReceipt ? 'Amount paid' : 'Amount due'}</Txt>
+                <Txt style={styles.amount}>{formatCurrency(p.amount)}</Txt>
+                <Badge status={p.status} />
+              </View>
+              <View style={styles.perf}>
+                <View style={[styles.notch, { left: -12 }]} />
+                <View style={styles.dash} />
+                <View style={[styles.notch, { right: -12 }]} />
+              </View>
+              <View style={styles.rows}>
+                {receipt.data && <Row label="Receipt no." value={receipt.data.receiptNo} />}
+                <Row label="Service" value={SERVICE_LABELS[p.service]} />
+                <Row label="Billed to" value={p.customerName} />
+                {receipt.data && <Row label="Plan period" value={`${formatDate(receipt.data.startDate)} – ${formatDate(receipt.data.endDate)}`} />}
+                {receipt.data && <Row label="Visits" value={receipt.data.visits} />}
+                <Row label="Created" value={formatDateTime(p.createdAt)} />
+                <Row label="Paid on" value={p.paidAt ? formatDateTime(p.paidAt) : undefined} />
+                <Row label="Method" value={p.method} />
+                <Row label="Reference" value={p.reference} />
+                <Row label="Attempts" value={p.attempts} />
+                {!!p.refundedAmount && <Row label="Refunded" value={formatCurrency(p.refundedAmount)} strong />}
+              </View>
+            </View>
             {p.status === 'failed' && (
               <Notice tone="error" icon="close-circle-outline">
                 {p.failureReason ? `Your last attempt failed: ${p.failureReason}.` : 'Your last attempt failed.'} You can retry with the same link.
               </Notice>
             )}
-            <Card>
-              {receipt.data && <InfoRow label="Receipt no." value={receipt.data.receiptNo} />}
-              <InfoRow label="Service" value={SERVICE_LABELS[p.service]} />
-              <InfoRow label="Billed to" value={p.customerName} />
-              {receipt.data && <InfoRow label="Plan period" value={`${formatDate(receipt.data.startDate)} – ${formatDate(receipt.data.endDate)}`} />}
-              {receipt.data && <InfoRow label="Visits" value={receipt.data.visits} />}
-              <InfoRow label="Created" value={formatDateTime(p.createdAt)} />
-              <InfoRow label="Paid on" value={p.paidAt ? formatDateTime(p.paidAt) : undefined} />
-              <InfoRow label="Method" value={p.method} />
-              <InfoRow label="Reference" value={p.reference} />
-              <InfoRow label="Attempts" value={p.attempts} />
-              {!!p.refundedAmount && <InfoRow label="Refunded" value={formatCurrency(p.refundedAmount)} />}
-            </Card>
             {!!p.refunds?.length && (
               <Section title="Refunds">
                 <RefundList refunds={p.refunds} />
@@ -80,3 +88,25 @@ function shareReceipt(p: Payment, r: { receiptNo: string; startDate: string; end
   ].filter(Boolean);
   Share.share({ title: `Receipt ${r.receiptNo}`, message: lines.join('\n') }).catch(() => undefined);
 }
+
+function Row({ label, value, strong }: { label: string; value?: string | number | null; strong?: boolean }) {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <View style={styles.row}>
+      <Txt variant="small">{label}</Txt>
+      <Txt variant={strong ? 'bodyStrong' : 'body'} style={styles.rowValue} numberOfLines={2}>{String(value)}</Txt>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  receipt: { backgroundColor: colors.card, borderRadius: radius.xl, ...shadow },
+  head: { alignItems: 'center', gap: 8, paddingTop: spacing.lg, paddingBottom: spacing.md, paddingHorizontal: 20 },
+  amount: { fontFamily: fonts.heading, fontSize: 40, lineHeight: 48, color: colors.text },
+  perf: { height: 24, justifyContent: 'center' },
+  notch: { position: 'absolute', width: 24, height: 24, borderRadius: 12, backgroundColor: colors.background },
+  dash: { marginHorizontal: 20, borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border },
+  rows: { paddingHorizontal: 20, paddingTop: spacing.sm, paddingBottom: 20, gap: 12 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  rowValue: { flex: 1, textAlign: 'right' },
+});

@@ -45,7 +45,7 @@ export function RoleTabs({ tabs }: { tabs: TabDef[] }) {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontFamily: fonts.medium, fontSize: 11 },
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, height: 64, paddingTop: 6 },
+        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, height: 64, paddingTop: 8 },
         sceneStyle: { backgroundColor: colors.background },
         animation: 'fade',
       }}

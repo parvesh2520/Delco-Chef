@@ -11,3 +11,6 @@ export * from './RealMap';
 export * from './LiveMap';
 export * from './Toast';
 export * from './NotificationCentre';
+export * from './Illustration';
+export * from './ChefCard';
+export * from './Bookings';

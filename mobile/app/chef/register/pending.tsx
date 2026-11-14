@@ -14,7 +14,7 @@ export default function ChefApplicationPending() {
   const signOut = useSignOut();
   return (
     <Screen back={false}>
-      <StatusHero celebrate tone="warning" icon="hourglass-outline" title="Application submitted" message="Thank you! Verification usually takes 2–3 working days." />
+      <StatusHero art="hat" celebrate tone="warning" icon="hourglass-outline" title="Application submitted" message="Thank you! Verification usually takes 2–3 working days." />
       <Card>
         <Txt variant="h3">What happens next</Txt>
         {STEPS.map((s, i) => <InfoRow key={s} label={`Step ${i + 1}`} value={s} />)}

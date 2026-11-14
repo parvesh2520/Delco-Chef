@@ -6,7 +6,7 @@ import { Button, Notice, Screen, StatusHero } from '../../src/components';
 export default function Offline() {
   return (
     <Screen>
-      <StatusHero tone="neutral" icon="cloud-offline-outline" title="No internet connection" message="Check Wi-Fi or mobile data, then try again. Your changes haven’t been lost.">
+      <StatusHero art="plug" tone="neutral" icon="cloud-offline-outline" title="No internet connection" message="Check Wi-Fi or mobile data, then try again. Your changes haven’t been lost.">
         <Button title="Try again" icon="refresh" onPress={() => router.back()} />
       </StatusHero>
       <Notice>Automatic connectivity detection (@react-native-community/netinfo) is a pending integration.</Notice>

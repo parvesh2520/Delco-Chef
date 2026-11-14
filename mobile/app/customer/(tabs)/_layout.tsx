@@ -12,6 +12,7 @@ export default function CustomerTabs() {
       tabs={[
         { name: 'home', title: 'Home', icon: 'home-outline' },
         { name: 'bookings', title: 'Bookings', icon: 'calendar-outline' },
+        { name: 'assistant', title: 'Delco AI', icon: 'chatbubble-ellipses-outline' },
         { name: 'payments', title: 'Payments', icon: 'card-outline' },
         { name: 'profile', title: 'Profile', icon: 'person-outline' },
       ]}

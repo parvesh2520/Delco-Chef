@@ -33,7 +33,7 @@ export default function ServiceDetails() {
 function ComingSoon({ s }: { s: ServiceOffering }) {
   return (
     <Screen>
-      <StatusHero tone="info" icon="hourglass-outline" title={`${s.name} is coming soon`} message={s.description}>
+      <StatusHero art="pot" tone="info" icon="hourglass-outline" title={`${s.name} is coming soon`} message={s.description}>
         <NotifyMeButton s={s} />
         <Notice>Right now you can book Monthly Subscription or Custom Time.</Notice>
         <Button title="Explore available services" onPress={() => router.replace('/customer/services')} />

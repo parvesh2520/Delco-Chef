@@ -1,16 +1,16 @@
 import React from 'react';
 import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { haptic, PressableScale, PulseDot, reducedMotion, useLoop } from '../motion';
+import { haptic, PressableScale, PulseDot, reducedMotion } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, shadow, spacing } from '../theme';
+import { colors, fonts, radius, shadow, spacing } from '../theme';
 import { humanize, statusTone, toneColors, type Tone } from '../utils';
 import { Txt } from './Txt';
 
 type CardTone = 'default' | 'cream' | 'plum' | 'accent';
 
 const toneStyle: Record<CardTone, ViewStyle> = {
-  default: { backgroundColor: colors.card, borderColor: colors.border },
-  cream: { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
+  default: { backgroundColor: colors.card, borderColor: 'transparent' },
+  cream: { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, shadowOpacity: 0, elevation: 0 },
   plum: { backgroundColor: colors.primary, borderColor: colors.primary },
   accent: { backgroundColor: colors.accentLight, borderColor: colors.accent },
 };
@@ -25,31 +25,12 @@ export interface CardProps {
 
 export function Card({ children, onPress, tone = 'default', style, accessibilityLabel }: CardProps) {
   const s = [styles.card, toneStyle[tone], tone === 'plum' && { overflow: 'hidden' as const }, style];
-  const body = (
-    <>
-      {tone === 'plum' && <Sheen />}
-      {children}
-    </>
-  );
+  const body = children;
   if (!onPress) return <View style={s}>{body}</View>;
   return (
     <PressableScale onPress={onPress} to={0.98} feedback="select" accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={s}>
       {body}
     </PressableScale>
-  );
-}
-
-/** Slow diagonal light sweep across the plum hero cards. */
-function Sheen() {
-  const v = useLoop(5200);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.sheen,
-        { transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [-220, 420] }) }, { rotate: '18deg' }] },
-      ]}
-    />
   );
 }
 
@@ -76,7 +57,7 @@ export function Badge({ status, label, tone }: { status?: string; label?: string
         { opacity: v, transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}
     >
       {live && <PulseDot color={t.fg} size={6} />}
-      <Txt variant="caption" color={t.fg} style={{ fontWeight: '700' }}>
+      <Txt variant="caption" color={t.fg} style={{ fontFamily: fonts.medium }}>
         {text}
       </Txt>
     </Animated.View>
@@ -97,16 +78,16 @@ export function ListRow({ title, subtitle, icon, right, onPress, danger }: ListR
   return (
     <Pressable onPress={onPress && (() => (haptic.select(), onPress()))} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.sand }]}>
       {icon && (
-        <View style={[styles.rowIcon, danger && { backgroundColor: colors.errorLight }]}>
-          <Ionicons name={icon} size={18} color={danger ? colors.error : colors.purple} />
+        <View style={styles.rowIcon}>
+          <Ionicons name={icon} size={20} color={danger ? colors.error : colors.textSecondary} />
         </View>
       )}
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, gap: 2 }}>
         <Txt variant="bodyStrong" color={danger ? colors.error : undefined}>{title}</Txt>
         {subtitle && <Txt variant="small">{subtitle}</Txt>}
       </View>
       {right}
-      {onPress && <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />}
+      {onPress && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
     </Pressable>
   );
 }
@@ -126,11 +107,10 @@ export function ListGroup({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.md, gap: spacing.sm, ...shadow },
+  card: { borderRadius: radius.lg, borderWidth: 1, padding: 20, gap: 12, ...shadow },
   badgeLive: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 4 },
-  sheen: { position: 'absolute', top: -60, bottom: -60, width: 70, backgroundColor: 'rgba(255,248,239,0.07)' },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.md, paddingVertical: 14 },
-  rowIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
-  divider: { borderTopWidth: 1, borderTopColor: colors.border },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.md, minHeight: 60, paddingVertical: 12 },
+  rowIcon: { width: 24, alignItems: 'center' },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginLeft: spacing.md },
 });

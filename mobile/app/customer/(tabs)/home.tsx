@@ -1,16 +1,26 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, ListGroup, ListRow, NextActionCard, Screen, Section, type NextAction } from '../../../src/components';
+import { Badge, ListGroup, ListRow, NextActionCard, Screen, Section, VisitCard, type NextAction } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
 import { Skeleton } from '../../../src/motion';
 import { useSession } from '../../../src/navigation';
 import { bookingService, notificationService, visitService } from '../../../src/services';
 import { colors } from '../../../src/theme';
 import type { ServiceRequest, Subscription, Visit } from '../../../src/types';
-import { formatDate, formatDateTime } from '../../../src/utils';
+import { formatDate, formatTime } from '../../../src/utils';
+
+/** Heading above the next-visit card: Today’s / Tomorrow’s visit, or the date. */
+function visitHeading(iso: string): string {
+  const day = new Date(iso);
+  const today = new Date();
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (day.toDateString() === today.toDateString()) return 'Today’s visit';
+  if (day.toDateString() === tomorrow.toDateString()) return 'Tomorrow’s visit';
+  return `Visit on ${day.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}`;
+}
 
 function openRequestHref(r: ServiceRequest) {
   const pending = r.trials.find((t) => t.status === 'completed' && !t.decision);
@@ -41,8 +51,8 @@ function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription |
   }
   if (upcoming) {
     return {
-      eyebrow: 'Next visit', icon: 'time-outline', title: formatDateTime(upcoming.date),
-      detail: `${upcoming.chefName} · ${upcoming.slot}`,
+      eyebrow: 'Chef arrives at', icon: 'time-outline', title: formatTime(upcoming.date), plainTitle: true,
+      detail: `${upcoming.chef?.name ?? upcoming.chefName} · ${upcoming.slot}`,
       onPress: () => router.push(visitHref(upcoming)),
       actions: [
         { title: 'Track chef', icon: 'navigate-outline', onPress: () => router.push({ pathname: '/customer/visit/[id]/track', params: { id: upcoming.id } }) },
@@ -62,7 +72,7 @@ function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription |
     };
   }
   return {
-    eyebrow: 'Get started', icon: 'sparkles-outline', title: 'Bring the chef home',
+    eyebrow: 'Get started', icon: 'restaurant-outline', title: 'Bring the chef home',
     detail: 'Start with a free trial. Delco assigns a verified chef matched to your needs.',
     actions: [{ title: 'Book a chef', icon: 'arrow-forward', onPress: () => router.push('/customer/services') }],
   };
@@ -76,15 +86,17 @@ export default function CustomerHome() {
   const notes = useQuery({ queryKey: ['notifications', 'customer'], queryFn: () => notificationService.list('customer') });
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
 
-  const upcoming = (visits.data ?? [])
-    .filter((v) => !['completed', 'customer_unavailable'].includes(v.status))
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const upcomingAll = (visits.data ?? [])
+    .filter((v) => !['completed', 'customer_unavailable', 'missed', 'cancelled'].includes(v.status))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = upcomingAll[0];
   const activeSubs = (subs.data ?? []).filter((s) => s.status === 'active' || s.status === 'pending_payment');
   const open = (reqs.data ?? []).filter((r) => r.isOpen);
   const decision = open.find((r) => r.status === 'awaiting_decision');
   const unpaid = activeSubs.find((s) => s.status === 'pending_payment');
   const loading = subs.isPending || visits.isPending || reqs.isPending;
   const hero = nextAction(decision, unpaid, upcoming, open);
+  const showsVisit = !decision && !unpaid && !!upcoming;
   const hasBookings = activeSubs.length > 0 || open.length > 0;
   const firstName = session?.user.fullName.split(' ')[0] || 'there';
 
@@ -95,7 +107,6 @@ export default function CustomerHome() {
       back={false}
       eyebrow="Delco Chefs"
       title={`Hello, ${firstName}`}
-      subtitle="Your kitchen. Your food. Your way."
       refreshing={subs.isRefetching || visits.isRefetching}
       onRefresh={refetch}
       right={
@@ -106,9 +117,23 @@ export default function CustomerHome() {
       }
     >
       {/* 1. The one thing to do next */}
-      {loading ? <Skeleton height={168} radius={20} /> : <NextActionCard {...hero} />}
+      {loading ? <Skeleton height={168} radius={20} /> : showsVisit && upcoming ? (
+        <Section eyebrow={visitHeading(upcoming.date)}>
+          <NextActionCard {...hero} />
+        </Section>
+      ) : <NextActionCard {...hero} />}
 
-      {/* 2. Everything else in progress, as compact rows */}
+      {/* 2. Upcoming visits, swipeable */}
+      {upcomingAll.length > 0 && (
+        <Section eyebrow="Upcoming visits">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 12 }}>
+            {upcomingAll.slice(0, 8).map((v) => <VisitCard key={v.id} visit={v} onPress={() => router.push(visitHref(v))} />)}
+          </ScrollView>
+        </Section>
+      )}
+
+      {/* 3. Everything else in progress, as compact rows */}
       {hasBookings && (
         <Section eyebrow="Your bookings">
           <ListGroup>
@@ -124,12 +149,11 @@ export default function CustomerHome() {
         </Section>
       )}
 
-      {/* 3. Shortcuts */}
-      <Section eyebrow="Quick links">
+      {/* 4. Shortcuts */}
+      <Section eyebrow="More">
         <ListGroup>
-          {hasBookings && <ListRow icon="add-circle-outline" title="Book another chef" onPress={() => router.push('/customer/services')} />}
           <ListRow icon="albums-outline" title="Trials" subtitle="Status of your free trials" onPress={() => router.push('/customer/trials')} />
-          <ListRow icon="restaurant-outline" title="Our services" onPress={() => router.push('/customer/services')} />
+          <ListRow icon="restaurant-outline" title={hasBookings ? 'Book another chef' : 'Our services'} subtitle="Monthly plans, home food and party mode" onPress={() => router.push('/customer/services')} />
           <ListRow icon="location-outline" title="Manage addresses" onPress={() => router.push('/customer/settings/addresses')} />
         </ListGroup>
       </Section>

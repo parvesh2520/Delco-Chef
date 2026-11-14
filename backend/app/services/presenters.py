@@ -75,6 +75,28 @@ def chef_name(db: Session, chef_id: int | None) -> str | None:
     return db.scalar(select(User.full_name).join(Chef, Chef.user_id == User.id).where(Chef.id == chef_id))
 
 
+def chef_card(db: Session, chef_id: int | None) -> dict | None:
+    """Public profile of the chef assigned to a customer's booking: what the customer is shown about who is coming."""
+    if not chef_id:
+        return None
+    from sqlalchemy import func
+    from app.models import VisitRating
+    c = db.get(Chef, chef_id)
+    if c is None:
+        return None
+    u = db.get(User, c.user_id)
+    completed = db.scalar(select(func.count()).select_from(AttendanceRecord)
+                          .where(AttendanceRecord.chef_id == c.id, AttendanceRecord.check_out_at.is_not(None))) or 0
+    ratings = db.scalar(select(func.count()).select_from(VisitRating).where(VisitRating.chef_id == c.id)) or 0
+    has_photo = db.scalar(select(ChefDocument.id).where(ChefDocument.chef_id == c.id, ChefDocument.type == "photo",
+                                                         ChefDocument.storage_key.is_not(None)).limit(1)) is not None
+    return {"id": str(c.id), "name": (u.full_name if u else None) or f"Chef {c.id}", "experienceYears": c.experience_years,
+            "cuisines": sorted(s.cuisine for s in c.skills), "specialities": c.specialities, "rating": float(c.rating),
+            "ratingCount": ratings, "completedVisits": completed, "verified": c.status == "approved",
+            "city": c.city, "joinedAt": iso(c.created_at),
+            "photoUrl": f"/media/chefs/{c.id}/photo" if has_photo else None}
+
+
 def requirements_json(r: ServiceRequest, s: Settings) -> dict:
     return {"members": r.members, "meals": r.meals, "slot": r.slot, "slotLabel": slot_label(r.slot, s),
             "startDate": iso(r.start_date), "endDate": iso(r.end_date),
@@ -182,8 +204,10 @@ def subscription_json(db: Session, sub: Subscription, s: Settings) -> dict:
     pay = db.scalar(select(Payment).where(Payment.subscription_id == sub.id))
     from app.services import subscriptions as subs
     sched = subs.schedule_for(db, sub, days)
+    from sqlalchemy import func
+    done = db.scalar(select(func.count()).select_from(Visit).where(Visit.subscription_id == sub.id, Visit.status == "completed")) or 0
     return {"id": str(sub.id), "requestId": str(sub.request_id), "service": sub.service, "status": sub.status,
-            "chefName": chef_name(db, sub.chef_id), "startDate": iso(sub.start_date), "endDate": iso(sched.end_date),
+            "chefName": chef_name(db, sub.chef_id), "chef": chef_card(db, sub.chef_id), "completedVisits": done, "startDate": iso(sub.start_date), "endDate": iso(sched.end_date),
             "plannedEndDate": iso(sub.end_date), "slot": slot_label(sub.slot, s), "slotCode": sub.slot, "meals": sub.meals,
             "members": sub.members, "amount": rupees(sub.amount_paise), "amountPaise": sub.amount_paise,
             "perVisitPaise": sub.per_visit_paise, "plannedVisits": sub.planned_visits, "weekdays": sub.weekdays,
@@ -240,7 +264,17 @@ def visit_json(db: Session, v: Visit, viewer_role: str, *, now: datetime | None 
         "checkInAt": iso(att.check_in_at) if att else None, "checkOutAt": iso(att.check_out_at) if att else None,
         "workedMinutes": att.worked_minutes if att else None, "codeLocked": v.code_attempts >= 5 and not v.code_used_at,
         "price": rupees(v.price_paise) if viewer_role != "chef" else None,
+        **(_customer_visit_extras(db, v, att) if viewer_role != "chef" else {}),
     }
+
+
+def _customer_visit_extras(db: Session, v: Visit, att: AttendanceRecord | None) -> dict:
+    """Customer/admin only: who the chef is, the dish photo taken at check-out, and the customer's rating."""
+    from app.models import VisitRating
+    from app.services.ratings import rating_json
+    food = att.food_photo_id if att and v.status == "completed" else None
+    return {"chef": chef_card(db, v.chef_id), "foodPhotoUrl": f"/media/photos/{food}" if food else None,
+            "rating": rating_json(db.get(VisitRating, v.id)), "canRate": v.status == "completed" and bool(v.chef_id)}
 
 
 def assignment_json(db: Session, a: Assignment, chef_lat: float | None, chef_lng: float | None, s: Settings) -> dict:

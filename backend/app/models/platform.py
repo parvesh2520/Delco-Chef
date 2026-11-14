@@ -62,6 +62,17 @@ class AttendanceEvent(IdMixin, Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
 
 
+class VisitRating(TimestampMixin, Base):
+    """A customer's 1-5 star rating of a completed visit; one per visit. The chef's rating is the average of these."""
+    __tablename__ = "visit_ratings"
+    visit_id: Mapped[int] = mapped_column(ForeignKey("visits.id", ondelete="CASCADE"), primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    chef_id: Mapped[int] = mapped_column(ForeignKey("chefs.id", ondelete="CASCADE"), nullable=False, index=True)
+    stars: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    comment: Mapped[str | None] = mapped_column(String(300))
+    __table_args__ = (CheckConstraint("stars between 1 and 5", name="stars"),)
+
+
 # ---------------- Tracking ----------------
 class LocationPoint(Base):
     __tablename__ = "location_points"

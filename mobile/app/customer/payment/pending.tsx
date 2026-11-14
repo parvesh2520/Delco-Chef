@@ -46,7 +46,7 @@ export default function PaymentPending() {
   };
   return (
     <Screen back refreshing={query.isRefetching} onRefresh={restart}>
-      <StatusHero tone="warning" icon="hourglass-outline" title="Confirming your payment" message="We activate your subscription only after the payment gateway confirms it. This usually takes a few seconds." />
+      <StatusHero art="receipt" tone="warning" icon="hourglass-outline" title="Confirming your payment" message="We activate your subscription only after the payment gateway confirms it. This usually takes a few seconds." />
       {waitedTooLong && (
         <Notice tone="warning">
           We haven’t received a confirmation yet. If you paid, it will appear here once the gateway confirms it. Nothing is charged twice.

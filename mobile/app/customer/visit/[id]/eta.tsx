@@ -16,7 +16,7 @@ export default function Eta() {
         {(t) =>
           t.available && !t.stale && t.etaMinutes != null ? (
             <>
-              <StatusHero tone="info" icon="bicycle-outline" title={t.arriving ? 'Your chef is arriving' : `Arriving around ${formatTime(new Date(Date.now() + t.etaMinutes * 60000).toISOString())}`} message={t.arriving ? 'Keep your check-in code ready.' : 'Approximate. Keep your check-in code ready.'}>
+              <StatusHero art="map" tone="info" icon="bicycle-outline" title={t.arriving ? 'Your chef is arriving' : `Arriving around ${formatTime(new Date(Date.now() + t.etaMinutes * 60000).toISOString())}`} message={t.arriving ? 'Keep your check-in code ready.' : 'Approximate. Keep your check-in code ready.'}>
                 {!t.arriving && (
                   <RollingNumber value={t.etaMinutes} format={(n) => `${Math.max(0, Math.round(n))} min away`} variant="h2" color={colors.purple} accessibilityLiveRegion="polite" />
                 )}

@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { FadeInUp, haptic, PressableScale } from '../motion';
-import { colors, spacing } from '../theme';
+import { colors, shadow, spacing } from '../theme';
 import { Eyebrow, Txt } from './Txt';
 
 export interface ScreenProps {
@@ -149,11 +149,11 @@ export function Screen({ title, subtitle, eyebrow, back = true, onBack, right, s
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 4, minHeight: 48, backgroundColor: colors.background, zIndex: 2 },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 20, paddingTop: spacing.sm, paddingBottom: spacing.xs, minHeight: 52, backgroundColor: colors.background, zIndex: 2 },
   barTitle: { flex: 1, alignItems: 'center' },
-  content: { padding: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl, gap: spacing.md },
-  header: { gap: 2, marginBottom: spacing.xs },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  content: { paddingHorizontal: 20, paddingTop: spacing.sm, paddingBottom: spacing.xxl, gap: spacing.lg },
+  header: { gap: 2, marginBottom: spacing.sm },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadow },
   footerLifted: { borderTopColor: 'transparent', elevation: 10, shadowColor: colors.primary, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12 },
-  footer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },
+  footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },
 });

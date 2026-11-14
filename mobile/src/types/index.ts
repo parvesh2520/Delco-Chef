@@ -53,6 +53,7 @@ export interface CustomerProfile {
   allergies?: string[];
   allergyNotes?: string | null;
   consentAcceptedAt?: string;
+  memberSince?: string | null;
   onboarded?: boolean;
 }
 
@@ -177,6 +178,9 @@ export interface Subscription {
   /** Monthly only: flexible off-days still free in this cycle. */
   freeOffDaysLeft?: number | null;
   plannedVisits?: number;
+  /** Visits of this plan the chef has completed. */
+  completedVisits?: number;
+  chef?: ChefCard | null;
   paymentId?: string;
 }
 
@@ -234,6 +238,35 @@ export interface Visit {
   instructions?: string;
   checkInAt?: string;
   checkOutAt?: string;
+  /** Customer view: the assigned chef's public profile. */
+  chef?: ChefCard | null;
+  /** API path of the dish photo taken at check-out (completed visits). */
+  foodPhotoUrl?: string | null;
+  rating?: VisitRating | null;
+  canRate?: boolean;
+}
+
+export interface VisitRating {
+  stars: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
+/** Public profile of the chef assigned to a booking. */
+export interface ChefCard {
+  id: string;
+  name: string;
+  experienceYears: number;
+  cuisines: string[];
+  specialities?: string | null;
+  rating: number;
+  ratingCount: number;
+  completedVisits: number;
+  verified: boolean;
+  city?: string | null;
+  joinedAt?: string;
+  /** API path (relative to the API base) of the chef's photo, fetched with the session token. */
+  photoUrl?: string | null;
 }
 
 export interface TrackingSnapshot {

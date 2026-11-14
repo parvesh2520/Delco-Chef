@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
 import { DURATION, EASE_OUT, FadeInUp, haptic, reducedMotion, useAnimatedNumber } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fonts, radius, spacing } from '../theme';
+import { colors, fonts, radius, shadow, spacing } from '../theme';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Eyebrow, Txt } from './Txt';
@@ -10,11 +10,11 @@ import { Eyebrow, Txt } from './Txt';
 /** Section with optional eyebrow + title, website-style. */
 export function Section({ title, eyebrow, action, children }: { title?: string; eyebrow?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <View style={{ gap: spacing.sm }}>
+    <View style={{ gap: 12 }}>
       {(title || eyebrow || action) && (
         <View style={styles.sectionHead}>
           <View style={{ flex: 1, gap: 2 }}>
-            {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+            {eyebrow && (title ? <Eyebrow>{eyebrow}</Eyebrow> : <Txt variant="h3">{eyebrow}</Txt>)}
             {title && <Txt variant="h2">{title}</Txt>}
           </View>
           {action}
@@ -29,7 +29,7 @@ export function Section({ title, eyebrow, action, children }: { title?: string; 
 export function InfoRow({ label, value, icon }: { label: string; value?: string | number | null; icon?: keyof typeof Ionicons.glyphMap }) {
   return (
     <View style={styles.infoRow}>
-      {icon && <Ionicons name={icon} size={16} color={colors.purple} style={{ marginTop: 2 }} />}
+      {icon && <Ionicons name={icon} size={16} color={colors.textMuted} style={{ marginTop: 3 }} />}
       <Txt variant="small" style={{ width: 120 }}>{label}</Txt>
       <Txt variant="bodyStrong" style={{ flex: 1 }}>{value === undefined || value === null || value === '' ? '—' : String(value)}</Txt>
     </View>
@@ -45,7 +45,7 @@ export function RollingNumber({ value, format = (n) => String(Math.round(n)), ..
 export function StatTile({ label, value, icon, onPress, highlight }: { label: string; value: string | number; icon: keyof typeof Ionicons.glyphMap; onPress?: () => void; highlight?: boolean }) {
   return (
     <Card onPress={onPress} tone={highlight ? 'accent' : 'default'} style={styles.stat} accessibilityLabel={`${label}: ${value}`}>
-      <Ionicons name={icon} size={20} color={colors.purple} />
+      <Ionicons name={icon} size={18} color={colors.textMuted} />
       {typeof value === 'number' ? (
         <CountUp value={value} />
       ) : (
@@ -68,13 +68,15 @@ export interface NextAction {
   onPress?: () => void;
   /** Nothing urgent: a quieter cream card instead of the plum one. */
   calm?: boolean;
+  /** Title in the body face (times, dates) instead of the display face. */
+  plainTitle?: boolean;
 }
 
 /**
  * The one thing that matters most right now, at the top of a home screen. Everything else on the screen is secondary
  * to it, so it is the only large dark card there.
  */
-export function NextActionCard({ eyebrow, title, detail, note, icon, actions = [], onPress, calm }: NextAction) {
+export function NextActionCard({ eyebrow, title, detail, note, icon, actions = [], onPress, calm, plainTitle }: NextAction) {
   const fg = calm ? colors.text : colors.textOnDark;
   const [main, ...rest] = actions;
   return (
@@ -85,7 +87,7 @@ export function NextActionCard({ eyebrow, title, detail, note, icon, actions = [
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <Txt variant="eyebrow" color={calm ? colors.purple : colors.accent}>{eyebrow}</Txt>
-          <Txt variant="h2" color={fg}>{title}</Txt>
+          <Txt variant="h2" color={fg} style={plainTitle ? styles.plainTitle : undefined}>{title}</Txt>
         </View>
       </View>
       {detail && <Txt variant="body" color={calm ? colors.textSecondary : colors.accentLight}>{detail}</Txt>}
@@ -150,8 +152,8 @@ export function Collapsible({ title, subtitle, icon, initiallyOpen = false, chil
   return (
     <View style={styles.collapsible}>
       <Pressable onPress={toggle} accessibilityRole="button" accessibilityState={{ expanded: open }} style={({ pressed }) => [styles.collapseHead, pressed && { backgroundColor: colors.sand }]}>
-        {icon && <Ionicons name={icon} size={18} color={colors.purple} />}
-        <View style={{ flex: 1 }}>
+        {icon && <Ionicons name={icon} size={20} color={colors.textSecondary} />}
+        <View style={{ flex: 1, gap: 2 }}>
           <Txt variant="bodyStrong">{title}</Txt>
           {subtitle && <Txt variant="small">{subtitle}</Txt>}
         </View>
@@ -190,19 +192,20 @@ export function MockTag({ children = 'Demo data — not connected to backend' }:
 }
 
 const styles = StyleSheet.create({
-  sectionHead: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
-  infoRow: { flexDirection: 'row', gap: 8, paddingVertical: 4, alignItems: 'flex-start' },
-  stat: { flex: 1, minWidth: 140, gap: 4 },
-  next: { gap: spacing.sm, padding: spacing.lg - 4 },
-  nextHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nextIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  sectionHead: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: 4 },
+  infoRow: { flexDirection: 'row', gap: 10, paddingVertical: 6, alignItems: 'flex-start' },
+  stat: { flex: 1, minWidth: 140, gap: 8 },
+  next: { gap: 12, padding: spacing.lg },
+  nextHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  nextIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  plainTitle: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 30 },
   nextMore: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   avatar: { backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   track: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
-  collapsible: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  collapseHead: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: spacing.md },
+  collapsible: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: 'hidden', ...shadow },
+  collapseHead: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md, minHeight: 60 },
   collapseBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
-  notice: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, alignItems: 'flex-start' },
+  notice: { flexDirection: 'row', gap: 12, padding: spacing.md, borderRadius: radius.md, alignItems: 'flex-start' },
   mock: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.primaryLight },
 });

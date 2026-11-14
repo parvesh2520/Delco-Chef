@@ -227,3 +227,8 @@ class PayoutDecisionIn(In):
 class AdjustIn(In):
     amountPaise: int
     reason: str
+
+
+class RatingIn(In):
+    stars: int = Field(ge=1, le=5)
+    comment: str | None = Field(None, max_length=300)

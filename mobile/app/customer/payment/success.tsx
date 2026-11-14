@@ -18,7 +18,7 @@ export default function PaymentSuccess() {
       <QueryView query={query} empty={{ title: 'Payment not found' }}>
         {(p) => (
           <>
-            <StatusHero celebrate icon="checkmark-circle" title="Payment successful" message="Your subscription is now active. Your chef will see the schedule right away." />
+            <StatusHero art="receipt" celebrate icon="checkmark-circle" title="Payment successful" message="Your subscription is now active. Your chef will see the schedule right away." />
             <Card>
               <InfoRow label="Amount" value={formatCurrency(p.amount)} />
               <InfoRow label="Paid on" value={p.paidAt ? formatDateTime(p.paidAt) : undefined} />

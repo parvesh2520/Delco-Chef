@@ -23,7 +23,7 @@ export default function ChefApplicationStatus() {
   if (status === 'approved') {
     return (
       <Screen back={false}>
-        <StatusHero tone="success" icon="ribbon-outline" title="You’re approved!" message="Welcome to Delco Chefs. You can now receive assignments near you.">
+        <StatusHero art="hat" tone="success" icon="ribbon-outline" title="You’re approved" message="Welcome to Delco Chefs. You can now receive assignments near you.">
           <Button title="Go to dashboard" icon="arrow-forward" onPress={() => router.replace('/chef/home')} />
         </StatusHero>
       </Screen>

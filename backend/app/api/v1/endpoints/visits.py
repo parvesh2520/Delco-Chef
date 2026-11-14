@@ -4,12 +4,12 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import ADMIN_ROLES, Principal, approved_chef, approved_chef_id, current
-from app.api.schemas import CheckInIn, CheckOutIn, CodeIn, PointsIn, UnavailableIn
+from app.api.deps import ADMIN_ROLES, Principal, approved_chef, approved_chef_id, current, customer_only
+from app.api.schemas import CheckInIn, CheckOutIn, CodeIn, PointsIn, RatingIn, UnavailableIn
 from app.core.database import SessionLocal, get_db
 from app.core.errors import AppError, not_found
-from app.models import Chef, Photo, Visit
-from app.services import attendance, tracking
+from app.models import Chef, ChefDocument, Photo, ServiceRequest, Visit
+from app.services import attendance, ratings, tracking
 from app.services.presenters import visit_json
 
 router = APIRouter(tags=["Visits"])
@@ -128,7 +128,38 @@ def get_photo(photo_id: int, p: Principal = Depends(current), db: Session = Depe
     if p.user.role == "chef":
         chef = db.scalar(select(Chef).where(Chef.user_id == p.user.id))
         allowed = bool(chef and ph.chef_id == chef.id)
+    elif p.user.role == "customer" and ph.kind == "food" and ph.visit_id:
+        # The customer may see the dish photo of their own visit, never selfies.
+        v = db.get(Visit, ph.visit_id)
+        allowed = bool(v and v.customer_id == p.user.id)
     if not allowed:
         raise not_found("Photo")
     from app.services.storage import storage
     return Response(storage.get(ph.storage_key), media_type=ph.content_type, headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.get("/media/chefs/{chef_id}/photo", summary="Chef profile photo: the chef, an admin, or a customer this chef serves")
+def chef_photo(chef_id: int, p: Principal = Depends(current), db: Session = Depends(get_db)):
+    if p.user.role in ADMIN_ROLES:
+        allowed = True
+    elif p.user.role == "chef":
+        allowed = db.scalar(select(Chef.id).where(Chef.user_id == p.user.id)) == chef_id
+    elif p.user.role == "customer":
+        allowed = (db.scalar(select(Visit.id).where(Visit.customer_id == p.user.id, Visit.chef_id == chef_id).limit(1)) is not None
+                   or db.scalar(select(ServiceRequest.id).where(ServiceRequest.customer_id == p.user.id,
+                                                                ServiceRequest.chef_id == chef_id).limit(1)) is not None)
+    else:
+        allowed = False
+    doc = db.scalar(select(ChefDocument).where(ChefDocument.chef_id == chef_id, ChefDocument.type == "photo",
+                                                ChefDocument.storage_key.is_not(None)).limit(1)) if allowed else None
+    if not doc:
+        raise not_found("Photo")
+    from app.services.storage import storage
+    media = "image/png" if doc.storage_key.endswith(".png") else "image/jpeg"
+    return Response(storage.get(doc.storage_key), media_type=media, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.post("/visits/{visit_id}/rating", status_code=201, summary="Customer: rate a completed visit (1-5 stars, once)")
+def rate(visit_id: int, body: RatingIn, p: Principal = Depends(customer_only), db: Session = Depends(get_db)):
+    ratings.rate_visit(db, p.user.id, visit_id, body.stars, body.comment)
+    return visit_json(db, db.get(Visit, visit_id), "customer")

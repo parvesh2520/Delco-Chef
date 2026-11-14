@@ -34,7 +34,7 @@ export default function ChefLocationPermission() {
         </>
       }
     >
-      <StatusHero tone="info" icon="location-outline" title="Share your location" message="Delco uses your location while you travel so the customer can see your ETA, and to confirm you’re at the address at check-in." />
+      <StatusHero art="map" tone="info" icon="location-outline" title="Share your location" message="Delco uses your location while you travel so the customer can see your ETA, and to confirm you’re at the address at check-in." />
       <Notice>Location is only shared from start of travel until check-out.</Notice>
       {start.isError && <Notice tone="error">{start.error.message}</Notice>}
     </Screen>

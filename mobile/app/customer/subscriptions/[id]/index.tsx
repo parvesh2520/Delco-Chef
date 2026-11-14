@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Card, ConfirmDialog, InfoRow, ListGroup, ListRow, Notice, QueryView, Screen } from '../../../../src/components';
-import { MEAL_LABELS, SERVICE_LABELS } from '../../../../src/constants';
+import { Button, Card, ChefCard, ConfirmDialog, InfoRow, ListGroup, ListRow, Notice, PlanCard, QueryView, Screen } from '../../../../src/components';
+import { MEAL_LABELS } from '../../../../src/constants';
 import { bookingService } from '../../../../src/services';
 import { useToast } from '../../../../src/store';
 import type { CancelPreview } from '../../../../src/types';
-import { formatCurrency, formatDate, formatDateTime, isNetworkError } from '../../../../src/utils';
+import { formatCurrency, formatDateTime, isNetworkError } from '../../../../src/utils';
 
 /** Subscription details. Active only after successful payment. */
 export default function SubscriptionDetails() {
@@ -31,16 +31,15 @@ export default function SubscriptionDetails() {
       <QueryView query={query} empty={{ title: 'Subscription not found' }}>
         {(s) => (
           <>
+            <PlanCard sub={s} />
+            {s.chef ? <ChefCard chef={s.chef} /> : s.chefName ? null : (
+              <Notice icon="person-outline">Delco will assign your chef before your first visit.</Notice>
+            )}
             <Card>
-              <Badge status={s.status} />
-              <InfoRow label="Service" value={SERVICE_LABELS[s.service]} />
-              <InfoRow label="Chef" value={s.chefName} />
-              <InfoRow label="Period" value={`${formatDate(s.startDate)} – ${formatDate(s.endDate)}`} />
-              <InfoRow label="Slot" value={s.slot} />
-              <InfoRow label="Meals" value={s.meals.map((m) => MEAL_LABELS[m]).join(', ')} />
-              <InfoRow label="Members" value={s.members} />
-              <InfoRow label="Amount" value={formatCurrency(s.amount)} />
-              <InfoRow label="Off-days" value={s.offDays.length} />
+              {!s.chef && s.chefName && <InfoRow icon="person-outline" label="Chef" value={s.chefName} />}
+              <InfoRow icon="restaurant-outline" label="Meals" value={s.meals.map((m) => MEAL_LABELS[m]).join(', ')} />
+              <InfoRow icon="people-outline" label="Members" value={s.members} />
+              <InfoRow icon="calendar-clear-outline" label="Off-days" value={s.offDays.length} />
             </Card>
             {s.status === 'pending_payment' ? (
               <>

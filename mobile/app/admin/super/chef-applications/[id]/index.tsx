@@ -43,7 +43,7 @@ export default function ChefApplication() {
                 <InfoRow label="Area" value={`${c.area}, ${c.city}`} icon="location-outline" />
                 <InfoRow label="Experience" value={`${c.experienceYears} years`} icon="ribbon-outline" />
                 <InfoRow label="Cuisines" value={c.cuisines.join(', ')} icon="restaurant-outline" />
-                <InfoRow label="Specialities" value={c.specialities} icon="sparkles-outline" />
+                <InfoRow label="Specialities" value={c.specialities} icon="star-outline" />
                 <InfoRow label="Applied" value={formatDate(c.joinedAt)} icon="calendar-outline" />
                 <InfoRow label="Bank" value={c.bank ? `${c.bank.accountNumberMasked} · ${c.bank.ifsc}` : 'Not provided'} icon="card-outline" />
               </Card>

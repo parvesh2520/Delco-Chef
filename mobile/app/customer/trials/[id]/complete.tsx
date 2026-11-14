@@ -15,7 +15,7 @@ export default function TrialComplete() {
       <QueryView query={query} empty={{ title: 'Trial not found' }}>
         {({ trial: t, request: r }) => (
           <>
-            <StatusHero icon="restaurant" title={`Trial ${t.number} complete`} message={`How was ${t.chefName ?? 'your chef'}’s cooking? Choose what you’d like to do next.`} />
+            <StatusHero art="cloche" icon="restaurant" title={`Trial ${t.number} complete`} message={`How was ${t.chefName ?? 'your chef'}’s cooking? Choose what you’d like to do next.`} />
             <Card>
               <InfoRow label="Service" value={SERVICE_LABELS[t.service]} />
               <InfoRow label="Date" value={formatDate(t.date)} />

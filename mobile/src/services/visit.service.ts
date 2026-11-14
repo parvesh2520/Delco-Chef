@@ -65,4 +65,6 @@ export const visitService = {
     api.post<AttendanceResult>(`/visits/${id}/check-out`, body),
   markCustomerUnavailable: (id: string, note: string, pos?: Partial<Position>) =>
     api.post<AttendanceResult>(`/visits/${id}/customer-unavailable`, { note, ...pos }),
+  /** Customer: rate a completed visit once (1–5 stars). Returns the updated visit. */
+  rate: (id: string, stars: number, comment?: string) => api.post<Visit>(`/visits/${id}/rating`, { stars, comment: comment || undefined }),
 };

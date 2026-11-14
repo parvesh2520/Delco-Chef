@@ -13,8 +13,7 @@ const styles: Record<Variant, TextStyle> = {
   bodyStrong: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 22 },
   small: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
-  // Site uses "— OUR SERVICES —" style eyebrow labels.
-  eyebrow: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase' },
+  eyebrow: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, letterSpacing: 0.2 },
   label: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18 },
 };
 
@@ -39,11 +38,11 @@ export function Txt({ variant = 'body', color, center, style, ...rest }: TxtProp
   );
 }
 
-/** "— LABEL —" eyebrow used above section headings on the website. */
+/** Small accent label above a heading. */
 export function Eyebrow({ children, center }: { children: string; center?: boolean }) {
   return (
     <Txt variant="eyebrow" center={center}>
-      — {children} —
+      {children}
     </Txt>
   );
 }
