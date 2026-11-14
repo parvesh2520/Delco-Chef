@@ -11,7 +11,7 @@ from app.core.security import encrypt
 from app.domain import ist_today
 from app.domain.geo import within_india
 from app.models import (Address, Chef, ChefBankAccount, ChefDocument, ChefOffDay, ChefSkill, Consent, CustomerProfile,
-                        ServiceInterest, ServiceRequest, User, Visit)
+                        ServiceInterest, ServiceRequest, Trial, User, Visit)
 from app.services.events import notify, notify_admins
 from app.services.storage import storage, validate_image
 
@@ -50,7 +50,17 @@ def profile_json(db: Session, u: User) -> dict:
             "householdSize": p.household_size if p else None, "preferredLanguage": p.preferred_language if p else "en",
             "diet": p.diet if p else None, "cuisines": p.cuisines if p else [], "allergies": p.allergies if p else [],
             "allergyNotes": p.allergy_notes if p else None, "consentAcceptedAt": consent.isoformat() if consent else None,
-            "onboarded": bool(p and p.onboarded_at), "memberSince": u.created_at.isoformat() if u.created_at else None}
+            "onboarded": bool(p and p.onboarded_at), "memberSince": u.created_at.isoformat() if u.created_at else None,
+            "mealsCooked": meals_cooked(db, u.id)}
+
+
+def meals_cooked(db: Session, customer_id: int) -> int:
+    """Completed cooking visits. Trials count from the trials table (their source of truth), so a completed trial is
+    counted even when its visit row is missing; other visits count when completed."""
+    trials = db.scalar(select(func.count()).where(Trial.customer_id == customer_id, Trial.status == "completed"))
+    visits = db.scalar(select(func.count()).where(Visit.customer_id == customer_id, Visit.status == "completed",
+                                                   Visit.kind != "trial"))
+    return trials + visits
 
 
 def update_profile(db: Session, u: User, body: dict) -> dict:

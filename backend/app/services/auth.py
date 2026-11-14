@@ -157,23 +157,41 @@ def session_payload(db: Session, user: User, tokens: dict | None = None) -> dict
 
 
 def refresh(db: Session, refresh_token: str) -> dict:
+    """Rotate a refresh token. Each session (device) has exactly one live token, its "head".
+
+    - Head presented: rotate it (sliding expiry: the new token lives REFRESH_TOKEN_EXPIRE_DAYS from now).
+    - The head's immediate predecessor presented within REFRESH_REUSE_GRACE_SECONDS: the phone never received the last
+      rotation (lost response). The unseen head is revoked and a new one issued, so the session survives a network drop.
+    - Any other rotated or revoked token: replay of a stolen token. That session (only) is revoked.
+    """
     t = now()
-    rt = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == security.secret_hash(refresh_token)).with_for_update())
-    if rt is None:
+    token_hash = security.secret_hash(refresh_token)
+    sid = db.scalar(select(RefreshToken.session_id).where(RefreshToken.token_hash == token_hash))
+    if sid is None:
         raise AppError("REFRESH_INVALID", "Session expired. Please sign in again.", 401)
-    if rt.revoked_at or rt.rotated_at:
-        # Reuse of a rotated token means it was stolen: kill the whole session.
-        db.execute(update(RefreshToken).where(RefreshToken.session_id == rt.session_id, RefreshToken.revoked_at.is_(None))
+    # Serialise all refreshes of one session (concurrent retries, a replay racing the real phone). Transaction-scoped.
+    db.execute(select(func.pg_advisory_xact_lock(func.hashtext(sid))))
+    rt = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash).execution_options(populate_existing=True))
+    if rt.revoked_at is None and rt.rotated_at is not None:
+        latest = db.scalar(select(func.max(RefreshToken.rotated_at)).where(RefreshToken.session_id == sid))
+        if rt.rotated_at == latest and t - rt.rotated_at <= timedelta(seconds=settings.REFRESH_REUSE_GRACE_SECONDS):
+            db.execute(update(RefreshToken).where(RefreshToken.session_id == sid, RefreshToken.rotated_at.is_(None),
+                                                  RefreshToken.revoked_at.is_(None)).values(revoked_at=t))
+        else:
+            rt.revoked_at = t  # falls through to the replay branch below
+    if rt.revoked_at:
+        db.execute(update(RefreshToken).where(RefreshToken.session_id == sid, RefreshToken.revoked_at.is_(None))
                    .values(revoked_at=t))
         db.commit()
+        log.warning("Refresh token replay: session revoked (user %s)", rt.user_id)
         raise AppError("REFRESH_REVOKED", "Session expired. Please sign in again.", 401)
     if rt.expires_at <= t:
         raise AppError("REFRESH_EXPIRED", "Session expired. Please sign in again.", 401)
     user = db.get(User, rt.user_id)
     if not user or user.status != "active":
         raise AppError("ACCOUNT_DISABLED", "This account is not active.", 401)
-    rt.rotated_at = t
-    tokens = _issue(db, user, rt.session_id, rt.device)
+    rt.rotated_at = rt.rotated_at or t
+    tokens = _issue(db, user, sid, rt.device)
     db.commit()
     return session_payload(db, user, tokens)
 

@@ -181,6 +181,7 @@ class AssignIn(In):
     chefId: str
     reason: str | None = Field(default=None, max_length=300)
     visitId: str | None = None
+    allRemaining: bool = False  # subscription: give this chef every upcoming visit that has no chef
 
 
 class PushTrialIn(In):

@@ -277,3 +277,43 @@ def test_repair_restores_trial_deleted_outside_the_app(client, otp, db):
 def make_chef_for_repair(db):
     from conftest import make_chef
     return make_chef(db, "9111100077", "Rhea", 12.9770, 77.6400, 4.2)
+
+
+def test_profile_meals_cooked_counts_completed_trial_without_visit_row(client, otp, db):
+    _, _, _, c = setup(client, otp, db)
+    rid = int(client.post(f"{V}/requests", json=trial_body("monthly_subscription", c["addressId"]), headers=c["h"]).json()["id"])
+    assert client.get(f"{V}/customers/me", headers=c["h"]).json()["mealsCooked"] == 0
+    # The production case: the trial was completed, but its visit row is gone.
+    db.query(Trial).filter(Trial.request_id == rid).update({"status": "completed"}, synchronize_session=False)
+    db.query(Visit).filter(Visit.request_id == rid).delete(synchronize_session=False)
+    db.commit()
+    assert client.get(f"{V}/customers/me", headers=c["h"]).json()["mealsCooked"] == 1
+
+
+def test_admin_lists_visits_without_chef_and_assigns_all_remaining(client, otp, db):
+    c, ops, _, link, sub_id = subscribe(client, otp, db)
+    pay_and_schedule(client, db, link)
+    visits = sub_visits(db, sub_id)
+    chef_id = visits[0].chef_id
+    rid = str(visits[0].request_id)
+    # The customer's subscription visits have lost their chef (the state seen in production).
+    db.query(Assignment).filter(Assignment.visit_id.in_([v.id for v in visits])).update({"status": "expired"},
+                                                                                        synchronize_session=False)
+    for v in visits:
+        v.chef_id, v.status = None, "pending_assignment"
+    db.commit()
+
+    rows = client.get(f"{V}/admin/unassigned", headers=ops["h"]).json()
+    assert [(r["requestId"], r["visits"], r["subscription"]) for r in rows] == [(rid, len(visits), True)]
+    assert client.get(f"{V}/admin/dashboard", headers=ops["h"]).json()["visitsNeedingChef"] == len(visits)
+    assert client.get(f"{V}/admin/unassigned", headers=c["h"]).status_code == 403
+
+    r = client.post(f"{V}/admin/requests/{rid}/assign", json={"chefId": str(chef_id), "allRemaining": True}, headers=ops["h"])
+    assert r.status_code == 200, r.text
+    assert r.json()["assignedVisits"] == len(visits) and r.json()["skippedVisits"] == []
+    bookings.expire_unanswered(db)  # confirmed: the offer timeout never takes them back
+    db.expire_all()
+    assert all(v.status == "scheduled" and v.chef_id == chef_id for v in sub_visits(db, sub_id))
+    assert client.get(f"{V}/admin/unassigned", headers=ops["h"]).json() == []
+    again = client.post(f"{V}/admin/requests/{rid}/assign", json={"chefId": str(chef_id), "allRemaining": True}, headers=ops["h"])
+    assert again.json()["error"]["code"] == "NOTHING_TO_ASSIGN"

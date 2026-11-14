@@ -71,16 +71,22 @@ def mask_tail(value: str | None, keep: int = 4) -> str:
     return "•" * max(len(value) - keep, 4) + value[-keep:]
 
 
+JWT_ISSUER = "delco-chefs"
+JWT_AUDIENCE = "delco-chefs-api"
+
+
 def create_access_token(user_id: int, role: str, session_id: str) -> tuple[str, int]:
     ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     now = datetime.now(timezone.utc)
     payload = {"sub": str(user_id), "role": role, "sid": session_id, "iat": now,
-               "exp": now + timedelta(seconds=ttl), "jti": uuid.uuid4().hex, "typ": "access"}
+               "exp": now + timedelta(seconds=ttl), "jti": uuid.uuid4().hex, "typ": "access",
+               "iss": JWT_ISSUER, "aud": JWT_AUDIENCE}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256"), ttl
 
 
 def decode_access_token(token: str) -> dict:
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"], audience=JWT_AUDIENCE, issuer=JWT_ISSUER,
+                         options={"require": ["exp", "iat", "sub", "sid", "iss", "aud"]})
     if payload.get("typ") != "access":
         raise jwt.InvalidTokenError("wrong token type")
     return payload

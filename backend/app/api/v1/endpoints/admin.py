@@ -42,7 +42,35 @@ def dashboard(p: Principal = Depends(admin_only), db: Session = Depends(get_db))
         "attendanceExceptions": count(select(AttendanceRecord.id).where(AttendanceRecord.status.in_(("exception", "needs_review")))),
         "pendingChefApplications": count(select(Chef.id).where(Chef.status.in_(("submitted", "under_review")))),
         "needsManualAssignment": count(select(Visit.id).where(Visit.status.in_(("needs_manual_assignment",)))),
+        "visitsNeedingChef": count(_needing_chef()),
+        "visitsNeedingChefToday": count(_needing_chef().where(Visit.service_date == today)),
     }
+
+
+def _needing_chef_filter():
+    """Upcoming visits with no chef that an admin can still assign."""
+    return (Visit.status.in_(bookings.UNASSIGNED), Visit.chef_id.is_(None), Visit.starts_at > datetime.now(timezone.utc))
+
+
+def _needing_chef():
+    return select(Visit.id).where(*_needing_chef_filter())
+
+
+@router.get("/unassigned", summary="Customers with upcoming visits that have no chef, one row per request")
+def unassigned(scope: str = Query("upcoming", pattern="^(today|upcoming)$"), p: Principal = Depends(admin_only),
+               db: Session = Depends(get_db)):
+    today = ist_today()
+    where = _needing_chef_filter() + ((Visit.service_date == today,) if scope == "today" else ())
+    rows = db.execute(
+        select(ServiceRequest.id, ServiceRequest.service, User.full_name, func.count(Visit.id), func.min(Visit.starts_at),
+               func.count(Visit.id).filter(Visit.service_date == today),
+               func.bool_or(Visit.status == "needs_manual_assignment"), func.bool_or(Visit.kind == "subscription"))
+        .join(Visit, Visit.request_id == ServiceRequest.id).join(User, User.id == ServiceRequest.customer_id)
+        .where(*where).group_by(ServiceRequest.id, ServiceRequest.service, User.full_name)
+        .order_by(func.min(Visit.starts_at))).all()
+    return [{"requestId": str(rid), "service": service, "customerName": name or "Customer", "visits": n,
+             "visitsToday": n_today, "nextVisitAt": iso(nxt), "needsManual": bool(manual), "subscription": bool(sub)}
+            for rid, service, name, n, nxt, n_today, manual, sub in rows]
 
 
 STATUS_STAGES = {"pending_assignment": ("request", "trial2_requested"), "trial_scheduled": ("trial1_scheduled", "trial2_scheduled"),
@@ -106,6 +134,11 @@ def suggestions(request_id: int, visitId: int | None = None, date: str | None = 
 @router.post("/requests/{request_id}/assign", summary="Confirm (or change) the chef. Reassignment needs a reason.")
 def assign(request_id: int, body: AssignIn, p: Principal = Depends(admin_only), db: Session = Depends(get_db)):
     r = _req(db, request_id)
+    if body.allRemaining:
+        n, skipped = bookings.assign_remaining(db, p.actor, r, int(body.chefId))
+        s = _s(db)
+        out = request_json(db, db.get(ServiceRequest, r.id), s, p.user.role, max_trials=s.int("max_free_trials"))
+        return {**out, "assignedVisits": n, "skippedVisits": skipped}
     v = db.get(Visit, int(body.visitId)) if body.visitId else bookings.target_visit(db, r)
     if not v or v.request_id != r.id:
         raise AppError("NOTHING_TO_ASSIGN", "This request has no visit waiting for a chef.", 409)

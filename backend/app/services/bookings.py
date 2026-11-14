@@ -391,6 +391,46 @@ def assign(db: Session, actor: Actor, visit_id: int, chef_id: int, reason: str |
     return v
 
 
+UNASSIGNED = ("pending_assignment", "needs_manual_assignment")
+
+
+def assign_remaining(db: Session, actor: Actor, r: ServiceRequest, chef_id: int) -> tuple[int, list[dict]]:
+    """Admin gives a subscription's chef every upcoming visit that has none (one action instead of one per visit).
+    These are paid subscription visits, so they are confirmed assignments like the system's own scheduling (they don't
+    expire after the offer timeout). Each visit runs the normal eligibility checks; visits the chef can't take (clash,
+    off-day, leave) are skipped and reported. The subscription keeps this chef for visits added later (extensions)."""
+    visits = db.scalars(select(Visit).where(Visit.request_id == r.id, Visit.kind == "subscription", Visit.chef_id.is_(None),
+                                            Visit.status.in_(UNASSIGNED), Visit.starts_at > now()).order_by(Visit.starts_at)).all()
+    if not visits:
+        raise AppError("NOTHING_TO_ASSIGN", "This subscription has no upcoming visit waiting for a chef.", 409)
+    assigned, skipped = [], []
+    for v in visits:
+        try:
+            with db.begin_nested():
+                assign(db, actor, v.id, chef_id, commit=False, quiet=True, confirmed=True)
+            assigned.append(v)
+        except AppError as e:
+            skipped.append({"visitId": str(v.id), "date": v.service_date.isoformat(), "reason": e.message})
+    if assigned:
+        for sub in db.scalars(select(Subscription).where(Subscription.request_id == r.id, Subscription.status == "active")):
+            sub.chef_id = chef_id
+        chef = db.get(Chef, chef_id)
+        cname = db.scalar(select(User.full_name).where(User.id == chef.user_id)) or "your chef"
+        first = assigned[0].starts_at.astimezone(IST).strftime("%d %b")
+        notify(db, "chef_assigned", chef.user_id, "Subscription visits assigned",
+               f"{len(assigned)} visit(s) added to your schedule from {first}.", "/chef/jobs")
+        notify(db, "chef_assigned", r.customer_id, "Chef assigned", f"{cname} will cook your upcoming visits from {first}.",
+               "/customer/subscriptions")
+        audit(db, actor, "Assigned chef to subscription visits", f"Request {r.id} → chef {chef_id}",
+              meta={"assigned": [v.id for v in assigned], "skipped": skipped})
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AppError("ASSIGN_CONFLICT", "This chef already has an overlapping booking.", 409) from None
+    return len(assigned), skipped
+
+
 def respond(db: Session, chef: Chef, assignment_id: int, accept: bool, reason: str | None) -> Assignment:
     """B9: chef accepts or declines. A decline returns the visit to the admin queue (never auto-reassigned)."""
     a = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.chef_id == chef.id).with_for_update())

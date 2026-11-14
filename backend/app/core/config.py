@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     HMAC_LOOKUP_KEY: str = "ZGV2LWhtYWMtbG9va3VwLWtleS0wMDAwMDAwMDAwMDA="
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # sliding: every refresh extends the session by this much
+    # A refresh token that was just rotated may be presented once more within this window (the phone lost the response).
+    REFRESH_REUSE_GRACE_SECONDS: int = 300
 
     OTP_PROVIDER: str = "log"  # log | (future: msg91, twilio…)
     # The mock "log" provider writes the code to the server log outside production. In production it does not, unless

@@ -50,9 +50,10 @@ def test_refresh_rotation_reuse_and_logout(client, otp):
     s = login(client, otp, "9876500005", "customer")
     r1 = client.post(f"{V}/auth/refresh", json={"refreshToken": s["refreshToken"]})
     assert r1.status_code == 200 and r1.json()["refreshToken"] != s["refreshToken"]
-    # Reusing the rotated token revokes the session family.
+    r2 = client.post(f"{V}/auth/refresh", json={"refreshToken": r1.json()["refreshToken"]})
+    # Reusing an older rotated token revokes the session family (lost-response grace covers only the latest one).
     assert client.post(f"{V}/auth/refresh", json={"refreshToken": s["refreshToken"]}).json()["error"]["code"] == "REFRESH_REVOKED"
-    assert client.post(f"{V}/auth/refresh", json={"refreshToken": r1.json()["refreshToken"]}).status_code == 401
+    assert client.post(f"{V}/auth/refresh", json={"refreshToken": r2.json()["refreshToken"]}).status_code == 401
     s2 = login(client, otp, "9876500005", "customer")
     assert client.post(f"{V}/auth/logout", json={"refreshToken": s2["refreshToken"]}, headers=H(s2)).status_code == 204
     assert client.get(f"{V}/customers/me", headers=H(s2)).status_code == 401
