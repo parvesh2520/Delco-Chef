@@ -53,10 +53,10 @@ export default function VisitDetails() {
               <Button title={v.rating ? 'Visit summary' : 'Rate this visit'} variant={v.rating ? 'primary' : 'accent'} icon={v.rating ? undefined : 'star-outline'}
                 onPress={() => router.push({ pathname: '/customer/visit/[id]/completed', params: { id: v.id } })} />
             ) : !ENDED.includes(v.status) ? (
-              <>
+              <View style={{ gap: 12 }}>
                 <Button title="Show check-in code" variant="accent" icon="key-outline" onPress={() => router.push({ pathname: '/customer/visit/[id]/code', params: { id: v.id } })} />
                 <Button title="Track chef" variant="secondary" icon="navigate-outline" onPress={() => router.push({ pathname: '/customer/visit/[id]/track', params: { id: v.id } })} />
-              </>
+              </View>
             ) : null}
           </>
         )}

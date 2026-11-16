@@ -21,6 +21,11 @@ function nextAction(d: Dashboard, isSuper: boolean): NextAction {
       detail: 'Check-ins or check-outs that need a decision before the chef is paid.',
       actions: [{ title: 'Review attendance', icon: 'arrow-forward', onPress: () => router.push('/admin/attendance') }] };
   }
+  if (d.visitsNeedingChefToday > 0) {
+    return { eyebrow: 'Today', icon: 'person-outline', title: plural(d.visitsNeedingChefToday, 'visit today has no chef', 'visits today have no chef'),
+      detail: 'Assign a chef before the visit starts.',
+      actions: [{ title: 'Assign chefs', icon: 'arrow-forward', onPress: () => router.push('/admin/unassigned') }] };
+  }
   if (d.pendingRequests > 0) {
     return { eyebrow: 'Waiting for a chef', icon: 'file-tray-full-outline', title: plural(d.pendingRequests, 'request to assign', 'requests to assign'),
       detail: 'Customers are waiting for a chef to be assigned.',
@@ -67,6 +72,7 @@ export default function AdminDashboard() {
           <Section eyebrow="Today at a glance">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
               <StatTile label="Pending requests" value={d.pendingRequests} icon="file-tray-full-outline" highlight={d.pendingRequests > 0} onPress={() => router.push('/admin/requests')} />
+              <StatTile label="Visits without chef" value={d.visitsNeedingChef} icon="person-outline" highlight={d.visitsNeedingChef > 0} onPress={() => router.push('/admin/unassigned')} />
               <StatTile label="Trials today" value={d.trialsToday} icon="albums-outline" onPress={() => router.push('/admin/trials')} />
               <StatTile label="Active subscriptions" value={d.activeSubscriptions} icon="repeat-outline" onPress={() => router.push('/admin/bookings')} />
               <StatTile label="Pending payments" value={d.pendingPayments} icon="card-outline" onPress={() => router.push('/admin/payments')} />
@@ -85,7 +91,8 @@ export default function AdminDashboard() {
         </QueryView>
       </Section>
       <Section title="Quick actions">
-        <Button title="Open request queue" icon="file-tray-full-outline" onPress={() => router.push('/admin/requests')} />
+        <Button title="Assign chefs" icon="person-add-outline" onPress={() => router.push('/admin/unassigned')} />
+        <Button title="Open request queue" variant="secondary" icon="file-tray-full-outline" onPress={() => router.push('/admin/requests')} />
         <Button title="Trial board" variant="secondary" icon="albums-outline" onPress={() => router.push('/admin/trials')} />
       </Section>
     </Screen>

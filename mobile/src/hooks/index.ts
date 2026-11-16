@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 /** Seconds remaining from `from` down to 0; restart by changing `key`. */
 export function useCountdown(from: number, key: unknown = 0) {
@@ -27,3 +28,14 @@ export const formatDuration = (sec: number) => {
   const s = sec % 60;
   return `${h > 0 ? `${h}:` : ''}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
+
+/** Current time, refreshed every `everyMs` and whenever the app comes back to the foreground. */
+export function useNow(everyMs = 30_000) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), everyMs);
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && setNow(Date.now()));
+    return () => (clearInterval(t), sub.remove());
+  }, [everyMs]);
+  return now;
+}

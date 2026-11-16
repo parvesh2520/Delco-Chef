@@ -137,7 +137,7 @@ export default function CustomerAssistant() {
             </FadeInUp>
 
             <FadeInUp index={2} style={{ gap: 8 }}>
-              <Txt variant="h3" style={{ paddingHorizontal: 4 }}>Try asking</Txt>
+              <Txt variant="h3">Try asking</Txt>
               <View style={styles.grid}>
                 {TOPICS.map((t) => (
                   <PressableScale key={t.title} onPress={() => send(t.prompt)} accessibilityRole="button" accessibilityLabel={t.prompt} style={styles.topic}>

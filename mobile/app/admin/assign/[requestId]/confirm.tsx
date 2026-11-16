@@ -10,16 +10,25 @@ import { useToast } from '../../../../src/store';
 
 /** Final confirmation before assigning / reassigning a chef. */
 export default function ConfirmAssignment() {
-  const { requestId, chefId, reason, push, date } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string; push?: string; date?: string }>();
+  const { requestId, chefId, reason, push, date, all } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string; push?: string; date?: string; all?: string }>();
   const invalidate = useAdminInvalidate();
   const request = useQuery({ queryKey: ['admin', 'request', requestId], queryFn: () => adminService.getRequest(requestId) });
   const suggestions = useQuery({ queryKey: ['admin', 'suggestions', requestId, push ? date : ''], queryFn: () => adminService.getSuggestions(requestId, push ? date : undefined) });
   const chef = suggestions.data?.find((s) => s.chefId === chefId);
   const assign = useMutation({
-    mutationFn: () => (push && date ? adminService.pushSecondTrial(requestId, chefId, date) : adminService.assignChef(requestId, chefId, reason)),
-    onSuccess: async () => {
+    mutationFn: async () => {
+      if (all) {
+        const r = await adminService.assignAllRemaining(requestId, chefId);
+        const skipped = r.skippedVisits.length ? ` · ${r.skippedVisits.length} skipped (chef unavailable)` : '';
+        return `Chef assigned to ${r.assignedVisits} visit${r.assignedVisits === 1 ? '' : 's'}${skipped}`;
+      }
+      if (push && date) await adminService.pushSecondTrial(requestId, chefId, date);
+      else await adminService.assignChef(requestId, chefId, reason);
+      return push ? 'Second trial pushed — customer notified' : reason ? 'Chef reassigned' : 'Chef assigned';
+    },
+    onSuccess: async (message) => {
       await invalidate();
-      useToast.getState().show(push ? 'Second trial pushed — customer notified' : reason ? 'Chef reassigned' : 'Chef assigned');
+      useToast.getState().show(message);
       router.dismissTo(`/admin/request/${requestId}`);
     },
   });
@@ -42,7 +51,11 @@ export default function ConfirmAssignment() {
           </Card>
         )}
       </QueryView>
-      <Notice>The chef will be notified and must accept the assignment. Customers never pick their chef.</Notice>
+      <Notice>
+        {all
+          ? 'The chef gets every upcoming visit of this subscription that has no chef. Visits the chef can’t take are skipped and stay in “Needs a chef”.'
+          : 'The chef will be notified and must accept the assignment. Customers never pick their chef.'}
+      </Notice>
       {assign.isError && <Notice tone="error">{assign.error.message}</Notice>}
     </Screen>
   );

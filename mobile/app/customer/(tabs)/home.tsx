@@ -3,24 +3,15 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, ListGroup, ListRow, NextActionCard, Screen, Section, VisitCard, type NextAction } from '../../../src/components';
+import { Badge, BookingCard, NextActionCard, QuickAction, Screen, Section, VisitCard, VisitHero, type NextAction } from '../../../src/components';
 import { SERVICE_LABELS } from '../../../src/constants';
+import { useNow } from '../../../src/hooks';
 import { Skeleton } from '../../../src/motion';
 import { useSession } from '../../../src/navigation';
 import { bookingService, notificationService, visitService } from '../../../src/services';
 import { colors } from '../../../src/theme';
 import type { ServiceRequest, Subscription, Visit } from '../../../src/types';
-import { formatDate, formatTime } from '../../../src/utils';
-
-/** Heading above the next-visit card: Today’s / Tomorrow’s visit, or the date. */
-function visitHeading(iso: string): string {
-  const day = new Date(iso);
-  const today = new Date();
-  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-  if (day.toDateString() === today.toDateString()) return 'Today’s visit';
-  if (day.toDateString() === tomorrow.toDateString()) return 'Tomorrow’s visit';
-  return `Visit on ${day.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}`;
-}
+import { formatDate, isSameDay, upcomingVisits, visitStart } from '../../../src/utils';
 
 function openRequestHref(r: ServiceRequest) {
   const pending = r.trials.find((t) => t.status === 'completed' && !t.decision);
@@ -33,7 +24,7 @@ const subHref = (s: Subscription) => ({ pathname: '/customer/subscriptions/[id]'
 const visitHref = (v: Visit) => ({ pathname: '/customer/visit/[id]', params: { id: v.id } }) as const;
 
 /** The single most important thing for this customer right now, most urgent first. */
-function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription | undefined, upcoming: Visit | undefined, open: ServiceRequest[]): NextAction {
+function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription | undefined, open: ServiceRequest[]): NextAction {
   if (decision) {
     return {
       eyebrow: 'Action needed', icon: 'restaurant-outline', title: 'How was your trial?',
@@ -47,19 +38,6 @@ function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription |
       detail: `${SERVICE_LABELS[unpaid.service]} · your plan starts once it’s paid.`,
       actions: [{ title: 'Pay now', icon: 'arrow-forward', onPress: () => router.push(subHref(unpaid)) }],
       onPress: () => router.push(subHref(unpaid)),
-    };
-  }
-  if (upcoming) {
-    return {
-      eyebrow: 'Chef arrives at', icon: 'time-outline', title: formatTime(upcoming.date), plainTitle: true,
-      detail: `${upcoming.chef?.name ?? upcoming.chefName} · ${upcoming.slot}`,
-      onPress: () => router.push(visitHref(upcoming)),
-      actions: [
-        { title: 'Track chef', icon: 'navigate-outline', onPress: () => router.push({ pathname: '/customer/visit/[id]/track', params: { id: upcoming.id } }) },
-        ...(upcoming.checkInCode
-          ? [{ title: `Code ${upcoming.checkInCode}`, icon: 'key-outline' as const, onPress: () => router.push({ pathname: '/customer/visit/[id]/code', params: { id: upcoming.id } }) }]
-          : []),
-      ],
     };
   }
   const r = open[0];
@@ -81,21 +59,25 @@ function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription |
 export default function CustomerHome() {
   const session = useSession();
   const subs = useQuery({ queryKey: ['subscriptions'], queryFn: bookingService.listMySubscriptions });
-  const visits = useQuery({ queryKey: ['visits'], queryFn: visitService.listCustomerVisits });
+  // Refreshed every minute so a chef setting off or arriving shows up without a pull-to-refresh.
+  const visits = useQuery({ queryKey: ['visits'], queryFn: visitService.listCustomerVisits, refetchInterval: 60_000 });
   const reqs = useQuery({ queryKey: ['requests'], queryFn: bookingService.listMyRequests });
   const notes = useQuery({ queryKey: ['notifications', 'customer'], queryFn: () => notificationService.list('customer') });
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
 
-  const upcomingAll = (visits.data ?? [])
-    .filter((v) => !['completed', 'customer_unavailable', 'missed', 'cancelled'].includes(v.status))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Ticks so the hero moves on to the next visit by itself once the current one's slot is over.
+  const now = useNow();
+  const upcomingAll = upcomingVisits(visits.data ?? [], now);
   const upcoming = upcomingAll[0];
+  const sameDay = upcoming
+    ? (visits.data ?? []).filter((v) => v.status !== 'cancelled' && isSameDay(visitStart(v), visitStart(upcoming))).sort((a, b) => visitStart(a) - visitStart(b))
+    : [];
   const activeSubs = (subs.data ?? []).filter((s) => s.status === 'active' || s.status === 'pending_payment');
   const open = (reqs.data ?? []).filter((r) => r.isOpen);
   const decision = open.find((r) => r.status === 'awaiting_decision');
   const unpaid = activeSubs.find((s) => s.status === 'pending_payment');
   const loading = subs.isPending || visits.isPending || reqs.isPending;
-  const hero = nextAction(decision, unpaid, upcoming, open);
+  const hero = nextAction(decision, unpaid, open);
   const showsVisit = !decision && !unpaid && !!upcoming;
   const hasBookings = activeSubs.length > 0 || open.length > 0;
   const firstName = session?.user.fullName.split(' ')[0] || 'there';
@@ -117,45 +99,52 @@ export default function CustomerHome() {
       }
     >
       {/* 1. The one thing to do next */}
-      {loading ? <Skeleton height={168} radius={20} /> : showsVisit && upcoming ? (
-        <Section eyebrow={visitHeading(upcoming.date)}>
-          <NextActionCard {...hero} />
-        </Section>
+      {loading ? <Skeleton height={280} radius={20} /> : showsVisit && upcoming ? (
+        <VisitHero key={upcoming.id} visit={upcoming} now={now} today={sameDay} onPress={() => router.push(visitHref(upcoming))}
+          actions={[
+            { title: 'Track chef', icon: 'navigate-outline', onPress: () => router.push({ pathname: '/customer/visit/[id]/track', params: { id: upcoming.id } }) },
+            ...(upcoming.checkInCode
+              ? [{ title: `Code ${upcoming.checkInCode}`, icon: 'key-outline' as const, onPress: () => router.push({ pathname: '/customer/visit/[id]/code', params: { id: upcoming.id } }) }]
+              : []),
+          ]} />
       ) : <NextActionCard {...hero} />}
 
-      {/* 2. Upcoming visits, swipeable */}
-      {upcomingAll.length > 0 && (
-        <Section eyebrow="Upcoming visits">
+      {/* 2. Later visits, swipeable (the hero already shows the next one) */}
+      {upcomingAll.length > (showsVisit ? 1 : 0) && (
+        <Section eyebrow={showsVisit ? 'Coming up after' : 'Upcoming visits'}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}
             contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 12 }}>
-            {upcomingAll.slice(0, 8).map((v) => <VisitCard key={v.id} visit={v} onPress={() => router.push(visitHref(v))} />)}
+            {upcomingAll.slice(showsVisit ? 1 : 0, 9).map((v) => <VisitCard key={v.id} visit={v} onPress={() => router.push(visitHref(v))} />)}
           </ScrollView>
         </Section>
       )}
 
-      {/* 3. Everything else in progress, as compact rows */}
+      {/* 3. Everything else in progress */}
       {hasBookings && (
         <Section eyebrow="Your bookings">
-          <ListGroup>
+          <View style={{ gap: 12 }}>
             {activeSubs.map((s) => (
-              <ListRow key={s.id} icon="repeat-outline" title={SERVICE_LABELS[s.service]} subtitle={`${formatDate(s.startDate)} – ${formatDate(s.endDate)} · ${s.slot}`}
-                right={<Badge status={s.status} />} onPress={() => router.push(subHref(s))} />
+              <BookingCard key={s.id} icon="repeat-outline" tint="orange" title={SERVICE_LABELS[s.service]}
+                subtitle={`${formatDate(s.startDate)} – ${formatDate(s.endDate)} · ${s.slot}`}
+                right={<Badge status={s.status} />} onPress={() => router.push(subHref(s))}
+                progress={s.status === 'active' && s.plannedVisits ? { done: s.completedVisits ?? 0, total: s.plannedVisits } : undefined} />
             ))}
             {open.map((r) => (
-              <ListRow key={r.id} icon="albums-outline" title={SERVICE_LABELS[r.service]} subtitle={`Trial ${r.trials.length} · ${r.assignedChefName ?? 'Delco is assigning your chef'}`}
+              <BookingCard key={r.id} icon="albums-outline" tint="plum" title={SERVICE_LABELS[r.service]}
+                subtitle={`Trial ${r.trials.length} · ${r.assignedChefName ?? 'Delco is assigning your chef'}`}
                 right={<Badge status={r.status} />} onPress={() => router.push(openRequestHref(r))} />
             ))}
-          </ListGroup>
+          </View>
         </Section>
       )}
 
       {/* 4. Shortcuts */}
-      <Section eyebrow="More">
-        <ListGroup>
-          <ListRow icon="albums-outline" title="Trials" subtitle="Status of your free trials" onPress={() => router.push('/customer/trials')} />
-          <ListRow icon="restaurant-outline" title={hasBookings ? 'Book another chef' : 'Our services'} subtitle="Monthly plans, home food and party mode" onPress={() => router.push('/customer/services')} />
-          <ListRow icon="location-outline" title="Manage addresses" onPress={() => router.push('/customer/settings/addresses')} />
-        </ListGroup>
+      <Section eyebrow="Quick actions">
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <QuickAction icon="restaurant-outline" tint="accent" label={hasBookings ? 'Book another chef' : 'Book a chef'} caption="Plans & services" onPress={() => router.push('/customer/services')} />
+          <QuickAction icon="albums-outline" tint="plum" label="Trials" caption="Free trial status" onPress={() => router.push('/customer/trials')} />
+          <QuickAction icon="location-outline" tint="orange" label="Addresses" caption="Manage" onPress={() => router.push('/customer/settings/addresses')} />
+        </View>
       </Section>
     </Screen>
   );

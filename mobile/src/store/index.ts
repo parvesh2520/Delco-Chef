@@ -19,7 +19,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   sessionExpired: false,
   signIn: ({ refreshToken: _r, ...session }) => set({ session, sessionExpired: false }),
-  signOut: () => set({ session: null }),
+  signOut: () => set({ session: null, sessionExpired: false }),
   expireSession: () => set({ session: null, sessionExpired: true }),
   setOnboarded: () => set((s) => (s.session ? { session: { ...s.session, onboarded: true } } : s)),
   setChefStatus: (chefStatus) => set((s) => (s.session ? { session: { ...s.session, chefStatus } } : s)),

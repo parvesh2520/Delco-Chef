@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
-import { DURATION, EASE_OUT, FadeInUp, haptic, reducedMotion, useAnimatedNumber } from '../motion';
+import { DURATION, EASE_OUT, FadeInUp, haptic, PressableScale, reducedMotion, useAnimatedNumber } from '../motion';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, radius, shadow, spacing } from '../theme';
 import { Button } from './Button';
@@ -92,13 +92,50 @@ export function NextActionCard({ eyebrow, title, detail, note, icon, actions = [
       </View>
       {detail && <Txt variant="body" color={calm ? colors.textSecondary : colors.accentLight}>{detail}</Txt>}
       {note && <Txt variant="small" color={calm ? colors.error : colors.accent}>{note}</Txt>}
-      {main && <Button title={main.title} icon={main.icon} variant={calm ? 'primary' : 'accent'} onPress={main.onPress} style={{ marginTop: spacing.xs }} />}
+      {main && (calm
+        ? <Button title={main.title} icon={main.icon} variant="primary" onPress={main.onPress} style={{ marginTop: spacing.xs }} />
+        : <HeroButton title={main.title} icon={main.icon} onPress={main.onPress} />)}
       {rest.length > 0 && (
         <View style={styles.nextMore}>
-          {rest.map((a) => <Button key={a.title} title={a.title} icon={a.icon} variant={calm ? 'secondary' : 'accent'} small onPress={a.onPress} />)}
+          {rest.map((a) => calm
+            ? <Button key={a.title} title={a.title} icon={a.icon} variant="secondary" small onPress={a.onPress} />
+            : <HeroChip key={a.title} title={a.title} icon={a.icon} onPress={a.onPress} />)}
         </View>
       )}
     </Card>
+  );
+}
+
+export type HeroAction = { title: string; icon?: keyof typeof Ionicons.glyphMap; onPress: () => void };
+
+/** Main action on the plum card: a solid orange pill lifted by a soft warm shadow. */
+export function HeroButton({ title, icon, onPress }: HeroAction) {
+  return (
+    <PressableScale onPress={onPress} to={0.97} accessibilityRole="button" accessibilityLabel={title} style={styles.heroBtn}>
+      <Txt style={styles.heroBtnText} color={colors.primary}>{title}</Txt>
+      {icon && (
+        <View style={styles.heroBtnIcon}>
+          <Ionicons name={icon} size={18} color={colors.primary} />
+        </View>
+      )}
+    </PressableScale>
+  );
+}
+
+/** Secondary action on the plum card: a frosted glass chip. A trailing code ("Code 4821") is set in spaced figures. */
+export function HeroChip({ title, icon, onPress }: HeroAction) {
+  const m = /^(.*?)\s+(\d{3,6})$/.exec(title);
+  return (
+    <PressableScale onPress={onPress} to={0.95} accessibilityRole="button" accessibilityLabel={title} style={styles.heroChip}>
+      {icon && <Ionicons name={icon} size={16} color={colors.accent} />}
+      <Txt variant="label" color={colors.textOnDark}>{m ? m[1] : title}</Txt>
+      {m && (
+        <>
+          <View style={styles.chipRule} />
+          <Txt style={styles.codeText} color={colors.textOnDark}>{m[2]}</Txt>
+        </>
+      )}
+    </PressableScale>
   );
 }
 
@@ -192,13 +229,26 @@ export function MockTag({ children = 'Demo data — not connected to backend' }:
 }
 
 const styles = StyleSheet.create({
-  sectionHead: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: 4 },
+  sectionHead: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
   infoRow: { flexDirection: 'row', gap: 10, paddingVertical: 6, alignItems: 'flex-start' },
   stat: { flex: 1, minWidth: 140, gap: 8 },
   next: { gap: 12, padding: spacing.lg },
   nextHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   nextIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   plainTitle: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 30 },
+  heroBtn: {
+    marginTop: spacing.xs, minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', paddingHorizontal: 22,
+    shadowColor: '#000000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.22, shadowRadius: 12, elevation: 6,
+  },
+  heroBtnText: { fontFamily: fonts.medium, fontSize: 16 },
+  heroBtnIcon: { position: 'absolute', right: 7, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(63,26,66,0.12)', alignItems: 'center', justifyContent: 'center' },
+  heroChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, paddingHorizontal: 14, borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,248,239,0.1)', borderWidth: 1, borderColor: 'rgba(255,248,239,0.2)',
+  },
+  chipRule: { width: 1, height: 16, backgroundColor: 'rgba(255,248,239,0.25)' },
+  codeText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 3 },
   nextMore: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   avatar: { backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   track: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },

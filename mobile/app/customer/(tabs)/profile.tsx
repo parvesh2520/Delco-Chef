@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Avatar, Card, ListGroup, ListRow, QueryView, Screen, Txt } from '../../../src/components';
+import { Avatar, Button, Card, ListGroup, ListRow, QueryView, Screen, Section, Txt } from '../../../src/components';
 import { useSignOut } from '../../../src/features/authentication';
 import { bookingService, customerService, visitService } from '../../../src/services';
 import { colors, fonts, radius, shadow, spacing } from '../../../src/theme';
@@ -28,7 +28,7 @@ export default function Profile() {
               <Txt variant="small" center>{maskPhone(p.phone)}{p.email ? ` · ${p.email}` : ''}</Txt>
             </View>
             <View style={styles.stats}>
-              <Stat value={done.length} label="Meals cooked" />
+              <Stat value={p.mealsCooked ?? done.length} label="Meals cooked" />
               <View style={styles.vr} />
               <Stat value={activePlans} label="Active plans" />
               <View style={styles.vr} />
@@ -37,19 +37,26 @@ export default function Profile() {
           </Card>
         )}
       </QueryView>
-      <ListGroup>
-        <ListRow icon="location-outline" title="Manage addresses" onPress={() => router.push('/customer/settings/addresses')} />
-        <ListRow icon="notifications-outline" title="Notifications" onPress={() => router.push('/customer/notifications')} />
-        <ListRow icon="settings-outline" title="Account settings" onPress={() => router.push('/customer/settings/account')} />
-        <ListRow icon="albums-outline" title="Trials" onPress={() => router.push('/customer/trials')} />
-      </ListGroup>
-      <ListGroup>
-        <ListRow icon="download-outline" title="Download my data" onPress={() => router.push('/customer/settings/data-export')} />
-        <ListRow icon="trash-outline" title="Delete account" danger onPress={() => router.push('/customer/settings/delete-account')} />
-      </ListGroup>
-      <ListGroup>
-        <ListRow icon="log-out-outline" title="Log out" onPress={signOut} />
-      </ListGroup>
+      <Section eyebrow="Your account">
+        <ListGroup>
+          <ListRow icon="location-outline" tint="orange" title="Addresses" subtitle="Where your chef cooks" onPress={() => router.push('/customer/settings/addresses')} />
+          <ListRow icon="notifications-outline" tint="plum" title="Notifications" subtitle="Visits, payments and updates" onPress={() => router.push('/customer/notifications')} />
+          <ListRow icon="person-outline" tint="accent" title="Account settings" subtitle="Name, email, diet and language" onPress={() => router.push('/customer/settings/account')} />
+        </ListGroup>
+      </Section>
+      <Section eyebrow="Bookings">
+        <ListGroup>
+          <ListRow icon="albums-outline" tint="plum" title="Trials" subtitle="Your free trial visits" onPress={() => router.push('/customer/trials')} />
+          <ListRow icon="receipt-outline" tint="green" title="Payments" subtitle="Receipts and refunds" onPress={() => router.push('/customer/payments')} />
+        </ListGroup>
+      </Section>
+      <Section eyebrow="Privacy">
+        <ListGroup>
+          <ListRow icon="download-outline" tint="green" title="Download my data" subtitle="A copy of everything we hold" onPress={() => router.push('/customer/settings/data-export')} />
+          <ListRow icon="trash-outline" tint="red" title="Delete account" danger onPress={() => router.push('/customer/settings/delete-account')} />
+        </ListGroup>
+      </Section>
+      <Button title="Log out" variant="secondary" icon="log-out-outline" onPress={signOut} />
     </Screen>
   );
 }

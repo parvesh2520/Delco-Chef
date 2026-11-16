@@ -25,6 +25,8 @@ module.exports = ({ config }) => {
         isAndroidBackgroundLocationEnabled: false,
       }],
       ['expo-image-picker', { cameraPermission: 'Chefs take a check-in selfie and food photos to complete a visit.', photosPermission: 'Chefs attach identity documents to their application.' }],
+      './plugins/withNoReleaseMinify',
+      './plugins/withShortNativeBuildDir',
     ],
   };
 };

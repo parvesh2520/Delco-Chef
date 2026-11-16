@@ -22,14 +22,14 @@ const Bar = ({ label, value }: { label: string; value: number }) => (
 
 /** Chef details relevant to assigning this request. */
 export default function AssignChefDetails() {
-  const { requestId, chefId, reason, push, date } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string; push?: string; date?: string }>();
+  const { requestId, chefId, reason, push, date, all } = useLocalSearchParams<{ requestId: string; chefId: string; reason?: string; push?: string; date?: string; all?: string }>();
   const query = useQuery({ queryKey: ['admin', 'suggestions', requestId, push ? date : ''], queryFn: () => adminService.getSuggestions(requestId, push ? date : undefined) });
   return (
     <Screen
       title="Chef details"
       footer={
         query.data?.find((s) => s.chefId === chefId)?.eligible ? (
-          <Button title="Select this chef" onPress={() => router.push({ pathname: '/admin/assign/[requestId]/confirm', params: { requestId, chefId, ...(reason ? { reason } : {}), ...(push ? { push, date } : {}) } })} />
+          <Button title="Select this chef" onPress={() => router.push({ pathname: '/admin/assign/[requestId]/confirm', params: { requestId, chefId, ...(reason ? { reason } : {}), ...(push ? { push, date } : {}), ...(all ? { all } : {}) } })} />
         ) : undefined
       }
     >

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useContext, useRef, useState } from 'react';
 import {
   Animated, KeyboardAvoidingView, Platform, RefreshControl, StyleSheet, View, type LayoutChangeEvent,
   type NativeScrollEvent, type NativeSyntheticEvent, type StyleProp, type ViewStyle,
@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { BottomTabBarHeightContext } from 'expo-router/js-tabs';
 import { FadeInUp, haptic, PressableScale } from '../motion';
 import { colors, shadow, spacing } from '../theme';
 import { Eyebrow, Txt } from './Txt';
@@ -38,6 +39,8 @@ export function Screen({ title, subtitle, eyebrow, back = true, onBack, right, s
   const mountedAt = useRef(Date.now()).current;
   const [moreBelow, setMoreBelow] = useState(false);
   const sizes = useRef({ content: 0, layout: 0 });
+  // Inside a tab screen the tab bar already sits on the bottom safe area; padding it again leaves an empty strip above it.
+  const inTabs = useContext(BottomTabBarHeightContext) !== undefined;
 
   // The footer gains a shadow only while content is hidden beneath it.
   const updateBelow = (offset: number) => {
@@ -49,7 +52,9 @@ export function Screen({ title, subtitle, eyebrow, back = true, onBack, right, s
     listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => footer && updateBelow(e.nativeEvent.contentOffset.y),
   });
 
-  const hasBar = back || !!right;
+  // Tab roots (no back arrow) put their header action beside the title instead of in a row of its own above it.
+  const inlineRight = !back && !!right && !!(title || eyebrow);
+  const hasBar = back || (!!right && !inlineRight);
   const barTitleOpacity = scrollY.interpolate({ inputRange: [COLLAPSE * 0.6, COLLAPSE], outputRange: [0, 1], extrapolate: 'clamp' });
   const bigTitle = {
     opacity: scrollY.interpolate({ inputRange: [0, COLLAPSE], outputRange: [1, 0], extrapolate: 'clamp' }),
@@ -81,14 +86,17 @@ export function Screen({ title, subtitle, eyebrow, back = true, onBack, right, s
   );
 
   const header = (title || eyebrow || subtitle) && (
-    <Animated.View style={[styles.header, scroll && bigTitle]}>
-      {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-      {title && (
-        <Txt variant="h1" accessibilityRole="header" style={{ marginTop: eyebrow ? 6 : 0 }}>
-          {title}
-        </Txt>
-      )}
-      {subtitle && <Txt variant="body" color={colors.textSecondary} style={{ marginTop: 6 }}>{subtitle}</Txt>}
+    <Animated.View style={[styles.header, inlineRight && styles.headerRow, scroll && bigTitle]}>
+      <View style={{ flex: inlineRight ? 1 : undefined }}>
+        {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+        {title && (
+          <Txt variant="h1" accessibilityRole="header" style={{ marginTop: eyebrow ? 4 : 0 }}>
+            {title}
+          </Txt>
+        )}
+        {subtitle && <Txt variant="body" color={colors.textSecondary} style={{ marginTop: 6 }}>{subtitle}</Txt>}
+      </View>
+      {inlineRight && <View style={styles.headerRight}>{right}</View>}
     </Animated.View>
   );
 
@@ -131,7 +139,7 @@ export function Screen({ title, subtitle, eyebrow, back = true, onBack, right, s
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', ...(footer ? [] : (['bottom'] as const))]}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', ...(footer || inTabs ? [] : (['bottom'] as const))]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {bar}
         {body}
@@ -153,6 +161,8 @@ const styles = StyleSheet.create({
   barTitle: { flex: 1, alignItems: 'center' },
   content: { paddingHorizontal: 20, paddingTop: spacing.sm, paddingBottom: spacing.xxl, gap: spacing.lg },
   header: { gap: 2, marginBottom: spacing.sm },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingTop: spacing.sm },
+  headerRight: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadow },
   footerLifted: { borderTopColor: 'transparent', elevation: 10, shadowColor: colors.primary, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12 },
   footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },

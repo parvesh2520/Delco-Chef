@@ -6,6 +6,7 @@ export default function AdminTabs() {
     <RoleTabs
       tabs={[
         { name: 'dashboard', title: 'Dashboard', icon: 'grid-outline' },
+        { name: 'unassigned', title: 'Assign', icon: 'person-add-outline' },
         { name: 'requests', title: 'Requests', icon: 'file-tray-full-outline' },
         { name: 'trials', title: 'Trials', icon: 'albums-outline' },
         { name: 'more', title: 'More', icon: 'menu-outline' },

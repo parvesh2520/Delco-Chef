@@ -3,16 +3,16 @@ import { Animated, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Txt } from '../../src/components';
+import { Button, TINTS, Txt, type Tint } from '../../src/components';
 import { EASE_OUT, FadeInUp, haptic, PressableScale, reducedMotion } from '../../src/motion';
 import { colors, fonts, radius, shadow, spacing } from '../../src/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-const SERVICES: { icon: IconName; tint: string; title: string; text: string }[] = [
-  { icon: 'calendar-outline', tint: colors.primary, title: 'Monthly Subscription', text: 'Daily verified home chef for regular everyday meals' },
-  { icon: 'restaurant-outline', tint: colors.purple, title: 'Custom Time & Trials', text: 'Free tasting trial before committing to a plan' },
-  { icon: 'shield-checkmark-outline', tint: colors.success, title: 'Verified & Trained Chefs', text: '100% police & Aadhaar verified culinary pros' },
+const SERVICES: { icon: IconName; tint: Tint; title: string; text: string }[] = [
+  { icon: 'calendar-outline', tint: 'orange', title: 'Monthly Subscription', text: 'Daily verified home chef for regular everyday meals' },
+  { icon: 'restaurant-outline', tint: 'plum', title: 'Custom Time & Trials', text: 'Free tasting trial before committing to a plan' },
+  { icon: 'shield-checkmark-outline', tint: 'green', title: 'Verified & Trained Chefs', text: '100% police & Aadhaar verified culinary pros' },
 ];
 
 const TRUST: { icon: IconName; label: string }[] = [
@@ -42,8 +42,8 @@ export default function Welcome() {
         <View style={styles.hero}>
           <FadeInUp index={0}>
             <View style={styles.city}>
-              <Ionicons name="location" size={14} color={colors.primary} />
-              <Txt variant="label" color={colors.primary}>Currently serving Bengaluru</Txt>
+              <Ionicons name="location" size={16} color={colors.accent} />
+              <Txt variant="label" color={colors.accentLight}>Currently serving Bengaluru</Txt>
             </View>
           </FadeInUp>
           <FadeInUp index={1}>
@@ -88,8 +88,7 @@ export default function Welcome() {
           </FadeInUp>
           <FadeInUp index={6}>
             <Pressable onPress={() => (haptic.select(), toAdmin())} accessibilityRole="button" hitSlop={8} style={({ pressed }) => [styles.teamLink, pressed && { opacity: 0.6 }]}>
-              <Ionicons name="briefcase-outline" size={14} color={colors.textSecondary} />
-              <Txt variant="small" color={colors.textSecondary}>Delco team? </Txt>
+              <Txt variant="small" color={colors.textSecondary}>Delco team?</Txt>
               <Txt variant="small" color={colors.purple} style={{ fontFamily: fonts.bold }}>Admin sign-in</Txt>
             </Pressable>
           </FadeInUp>
@@ -97,17 +96,17 @@ export default function Welcome() {
           {/* 2. Explore services */}
           <View style={styles.dividerRow}>
             <View style={styles.divider} />
-            <Txt variant="eyebrow" color={colors.textMuted}>EXPLORE SERVICES</Txt>
+            <Txt variant="label" color={colors.textMuted} center style={{ letterSpacing: 0 }}>Explore services</Txt>
             <View style={styles.divider} />
           </View>
 
           {SERVICES.map((s, i) => (
             <FadeInUp key={s.title} index={7 + i}>
               <PressableScale onPress={toCustomer} to={0.98} feedback="select" accessibilityRole="button" accessibilityLabel={`${s.title}. ${s.text}`} style={styles.serviceCard}>
-                <View style={styles.cardIconBox}>
-                  <Ionicons name={s.icon} size={24} color={s.tint} />
+                <View style={[styles.tile, { backgroundColor: TINTS[s.tint].bg }]}>
+                  <Ionicons name={s.icon} size={22} color={TINTS[s.tint].fg} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 2 }}>
                   <Txt variant="bodyStrong">{s.title}</Txt>
                   <Txt variant="small" color={colors.textMuted}>{s.text}</Txt>
                 </View>
@@ -142,10 +141,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.primary },
   scroll: { flexGrow: 1 },
   hero: { padding: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md },
-  city: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill,
-  },
+  city: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   trust: {
     flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5,
@@ -159,11 +155,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.card, padding: spacing.md,
     borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.primary,
   },
-  teamLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.xs },
+  teamLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', gap: 4, paddingVertical: spacing.xs },
   serviceCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.card, padding: spacing.md,
-    borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, ...shadow,
+    borderRadius: radius.lg, ...shadow,
   },
+  tile: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   cardIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.sand, justifyContent: 'center', alignItems: 'center' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm },
   divider: { flex: 1, height: 1, backgroundColor: colors.border },

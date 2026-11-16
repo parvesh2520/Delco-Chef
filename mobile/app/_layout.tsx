@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -11,6 +12,26 @@ import '../src/features/tracking';
 import { ToastHost } from '../src/components';
 import { CelebrationHost } from '../src/motion';
 import { colors } from '../src/theme';
+
+/**
+ * Any rendering error in the app lands here instead of closing it (release builds treat an uncaught render error as
+ * fatal). Plain React Native text, so it works even before the custom fonts have loaded.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+    console.error('Unhandled screen error', error);
+  }, [error]);
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: '600', color: colors.text, textAlign: 'center' }}>Something went wrong</Text>
+      <Text style={{ fontSize: 15, color: colors.textSecondary, textAlign: 'center' }}>The app hit an unexpected problem. Your bookings are safe.</Text>
+      <Pressable onPress={retry} accessibilityRole="button" style={{ marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999 }}>
+        <Text style={{ color: colors.textOnDark, fontSize: 16, fontWeight: '600' }}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

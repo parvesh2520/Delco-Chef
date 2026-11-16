@@ -1,6 +1,6 @@
 // Ops / Super Admin. The UI hides actions by role for convenience; FastAPI enforces every permission.
 import type {
-  AdminAccount, AdminDashboardStats, AssignmentHistoryEntry, AttendanceRecord, AuditLog, Chef, ChefSuggestion, Payout, PayoutDetail, RequestStatus,
+  AdminAccount, AdminDashboardStats, UnassignedRequest, AssignmentHistoryEntry, AttendanceRecord, AuditLog, Chef, ChefSuggestion, Payout, PayoutDetail, RequestStatus,
   ServiceRequest, SettingsSection, SettingsSectionKey, Subscription,
 } from '../types';
 import { api } from './api';
@@ -58,6 +58,12 @@ export const adminService = {
   getChef: (chefId: string) => api.get<Chef>(`/admin/chefs/${chefId}`),
   assignChef: (requestId: string, chefId: string, reason?: string) =>
     api.post<ServiceRequest>(`/admin/requests/${requestId}/assign`, { chefId, reason }),
+  /** Subscription: give the chef every upcoming visit that has none. */
+  assignAllRemaining: (requestId: string, chefId: string) =>
+    api.post<ServiceRequest & { assignedVisits: number; skippedVisits: { visitId: string; date: string; reason: string }[] }>(
+      `/admin/requests/${requestId}/assign`, { chefId, allRemaining: true }
+    ),
+  listUnassigned: (scope: 'today' | 'upcoming') => api.get<UnassignedRequest[]>('/admin/unassigned', { scope }),
   getAssignmentHistory: (requestId: string) => api.get<AssignmentHistoryEntry[]>(`/admin/requests/${requestId}/assignments`),
 
   listTrialBoard: () => api.get<ServiceRequest[]>('/admin/board'),

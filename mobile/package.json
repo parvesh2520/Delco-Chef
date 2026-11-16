@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:auth": "node --experimental-transform-types --no-warnings --import ./tests/register.mjs --test tests/auth-session.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/calistoga": "^0.4.1",

@@ -88,15 +88,22 @@ export function QueryView<T>({
  * one. Only the first level is wrapped: rows and grids inside an item keep their own layout. Items mount once, so
  * background refetches do not replay the entrance.
  */
+/** Top-level items, with fragments (including conditional ones) unpacked so each gets its own spacing. */
+function flatten(node: React.ReactNode, path = ''): { key: string; node: React.ReactNode }[] {
+  return React.Children.toArray(node).flatMap((c, i) => {
+    const key = path + String((c as { key?: React.Key }).key ?? i);
+    return React.isValidElement<{ children?: React.ReactNode }>(c) && c.type === React.Fragment ? flatten(c.props.children, key + '/') : [{ key, node: c }];
+  });
+}
+
 function Staggered({ children }: { children: React.ReactNode }) {
-  const top = React.isValidElement<{ children?: React.ReactNode }>(children) && children.type === React.Fragment ? children.props.children : children;
-  const items = React.Children.toArray(top);
+  const items = flatten(children);
   if (items.length < 2) return <>{children}</>;
   return (
     <View style={{ gap: spacing.md }}>
       {items.map((c, i) => (
-        <FadeInUp key={(c as { key?: React.Key }).key ?? i} index={i} distance={10}>
-          {c}
+        <FadeInUp key={c.key} index={i} distance={10}>
+          {c.node}
         </FadeInUp>
       ))}
     </View>

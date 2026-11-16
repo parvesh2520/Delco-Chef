@@ -55,6 +55,8 @@ export interface CustomerProfile {
   consentAcceptedAt?: string;
   memberSince?: string | null;
   onboarded?: boolean;
+  /** Completed cooking visits, counted by the server (includes completed trials). */
+  mealsCooked?: number;
 }
 
 // ---------- Services & bookings ----------
@@ -517,6 +519,21 @@ export interface AdminDashboardStats {
   pendingPayments: number;
   attendanceExceptions: number;
   pendingChefApplications: number;
+  /** Upcoming visits with no chef (all / today). */
+  visitsNeedingChef: number;
+  visitsNeedingChefToday: number;
+}
+
+/** GET /admin/unassigned: one row per customer request with upcoming visits that have no chef. */
+export interface UnassignedRequest {
+  requestId: string;
+  service: ServiceType;
+  customerName: string;
+  visits: number;
+  visitsToday: number;
+  nextVisitAt: string;
+  needsManual: boolean;
+  subscription: boolean;
 }
 
 export interface AdminAccount {
