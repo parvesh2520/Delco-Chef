@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     FAST2SMS_API_KEY: str = ""  # required when OTP_PROVIDER=fast2sms
     MESSAGE_CENTRAL_CUSTOMER_ID: str = ""  # required when OTP_PROVIDER=messagecentral, e.g. C-1234ABCD
     MESSAGE_CENTRAL_PASSWORD: str = ""     # account password; sent base64-encoded as the token API's `key`
+    # Comma-separated test numbers (fake accounts): never sent an SMS, their code goes to the log only (needs codes in
+    # the log, see OTP_LOG_CODES). Stops real SMS reaching whoever owns a made-up number.
+    OTP_TEST_PHONES: str = ""
     # Optional: also append logs to this file (relative paths resolve from the backend folder), e.g. server.log.
     # Ignored when ENVIRONMENT=test.
     LOG_FILE: str | None = None
@@ -76,6 +79,10 @@ class Settings(BaseSettings):
     @cached_property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @cached_property
+    def otp_test_phones(self) -> frozenset[str]:
+        return frozenset(x.strip() for x in self.OTP_TEST_PHONES.split(",") if x.strip())
 
     @cached_property
     def otp_codes_in_log(self) -> bool:

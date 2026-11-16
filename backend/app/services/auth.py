@@ -191,7 +191,8 @@ def request_otp(db: Session, raw_phone: str, portal: str) -> dict:
     db.add(OtpChallenge(phone_hmac=phash, code_hash=security.secret_hash(f"{phash}:{code}"), portal=portal, expires_at=t + OTP_TTL))
     db.commit()
     try:
-        ref = otp_provider.send(phone, code)
+        provider = LogOtpProvider() if phone in settings.otp_test_phones else otp_provider
+        ref = provider.send(phone, code)
         if ref:  # the provider checks the code itself
             db.execute(update(OtpChallenge).where(OtpChallenge.phone_hmac == phash, OtpChallenge.consumed_at.is_(None))
                        .values(provider_ref=ref))

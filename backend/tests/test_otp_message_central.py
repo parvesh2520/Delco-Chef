@@ -86,3 +86,13 @@ def test_failed_send_falls_back_to_our_logged_code(client, mc, monkeypatch):
     assert _request(client, "9876500083").status_code == 200  # codes are logged in tests: sign-in carries on
     code = next(m.split(": ")[1][:6] for m in logged if m.startswith("DEV OTP"))
     assert _verify(client, "9876500083", code).status_code == 200  # checked against our own hash, not the provider
+
+
+def test_test_numbers_get_no_sms_and_use_the_logged_code(client, mc, monkeypatch):
+    monkeypatch.setitem(settings.__dict__, "otp_test_phones", frozenset({"9999999999"}))
+    logged = []
+    monkeypatch.setattr(auth_svc.log, "info", lambda msg, *a, **k: logged.append(msg % a))
+    assert _request(client, "9999999999").status_code == 200
+    assert not any(c[1] == "/verification/v3/send" for c in mc.calls)  # nothing sent to a made-up number
+    code = next(m.split(": ")[1][:6] for m in logged if m.startswith("DEV OTP"))
+    assert _verify(client, "9999999999", code).status_code == 200
