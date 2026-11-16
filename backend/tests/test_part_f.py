@@ -37,8 +37,10 @@ class FakeRazorpay(RazorpayGateway):
         self.calls: list[tuple] = []
         self.down = False
         self.n = 0
+        self.refund_keys: list[str] = []  # every X-Refund-Idempotency sent
+        self.refunds: dict[str, str] = {}  # idempotency key -> refund id, as Razorpay keeps them
 
-    def _call(self, method, path, body=None):
+    def _call(self, method, path, body=None, headers=None):
         self.calls.append((method, path, body))
         if self.down:
             raise AppError("GATEWAY_UNAVAILABLE", "down", 503)
@@ -48,7 +50,10 @@ class FakeRazorpay(RazorpayGateway):
         if path.endswith("/cancel"):
             return {}
         if path.endswith("/refund"):
-            return {"id": f"rfnd_t{self.n}"}
+            key = headers["X-Refund-Idempotency"]
+            assert len(key) >= 10  # Razorpay's minimum
+            self.refund_keys.append(key)
+            return {"id": self.refunds.setdefault(key, f"rfnd_t{self.n}")}
         return self.payments[path.rsplit("/", 1)[-1]]
 
 
@@ -298,6 +303,32 @@ def test_half_refund_at_exactly_two_hours_and_duplicate_cancel_refused(client, o
     send(client, refund_event("processed", rf, "pay_ok"), "evt_rf")
     db.expire_all()
     assert db.get(Payment, p.id).status == "PARTIALLY_REFUNDED"
+
+
+def test_cancel_whose_save_fails_after_the_refund_is_retried_without_a_second_refund(client, otp, db, rzp, monkeypatch):
+    c, _, p, link, _ = subscribe(client, otp, db)
+    paid_and_scheduled(client, db, link)
+    real_audit, failed = payments.audit, []
+
+    def drop_once(*a, **kw):  # the database drops after Razorpay accepted the refund, before our final commit
+        if not failed:
+            failed.append(1)
+            raise RuntimeError("connection lost")
+        return real_audit(*a, **kw)
+
+    monkeypatch.setattr(payments, "audit", drop_once)
+    with pytest.raises(RuntimeError):
+        _cancel_at(client, c, p.subscription_id, monkeypatch, db, timedelta(hours=3))
+    db.expire_all()
+    assert db.get(Subscription, p.subscription_id).status == "active" and len(rzp.refunds) == 1
+    # Retried an hour later, when a fresh quote would be 50%: the recorded refund is finished, not a new one sent.
+    _, done = _cancel_at(client, c, p.subscription_id, monkeypatch, db, timedelta(hours=1))
+    assert done.status_code == 200 and done.json()["refundPaise"] == p.amount_paise
+    assert len(rzp.refund_keys) == 2 and len(set(rzp.refund_keys)) == 1 and len(rzp.refunds) == 1
+    db.expire_all()
+    rfs = db.scalars(select(Refund).where(Refund.payment_id == p.id)).all()
+    assert [(r.amount_paise, r.gateway_refund_id) for r in rfs] == [(p.amount_paise, *rzp.refunds.values())]
+    assert db.get(Subscription, p.subscription_id).status == "cancelled"
 
 
 def test_refund_failed_at_gateway_is_tracked_and_flagged(client, otp, db, rzp, monkeypatch):

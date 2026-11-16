@@ -40,7 +40,9 @@ def run_cycle(db: Session, start: date) -> int:
     # Carried forward: earlier visits that were held for review, now resolved, and never paid.
     carried = db.scalars(select(Visit).join(AttendanceRecord, AttendanceRecord.visit_id == Visit.id).where(
         Visit.starts_at < lo, AttendanceRecord.status == "resolved", AttendanceRecord.check_in_at.is_not(None),
-        ~select(PayoutItem.id).where(PayoutItem.visit_id == Visit.id).exists())).all()
+        # A line in this same cycle is about to be rebuilt, so it must not exclude the visit on a re-run.
+        ~select(PayoutItem.id).join(Payout, Payout.id == PayoutItem.payout_id).where(
+            PayoutItem.visit_id == Visit.id, Payout.cycle_start != start).exists())).all()
     by_chef: dict[int, list[Visit]] = {}
     for v in in_cycle + carried:
         by_chef.setdefault(v.chef_id, []).append(v)

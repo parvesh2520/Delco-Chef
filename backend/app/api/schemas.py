@@ -109,14 +109,15 @@ class PositionIn(In):
     deviceId: str | None = None
 
 
+# Photo ids are ints: the app sends them as strings ("12"), which coerce; anything else is a clean 422, not a 500.
 class CheckInIn(PositionIn):
     code: str = ""
-    selfiePhotoId: str | None = None
+    selfiePhotoId: int | None = None
 
 
 class CheckOutIn(PositionIn):
-    selfiePhotoId: str | None = None
-    foodPhotoId: str | None = None
+    selfiePhotoId: int | None = None
+    foodPhotoId: int | None = None
 
 
 class CodeIn(In):

@@ -81,7 +81,7 @@ function nextAction(decision: ServiceRequest | undefined, unpaid: Subscription |
 export default function CustomerHome() {
   const session = useSession();
   const subs = useQuery({ queryKey: ['subscriptions'], queryFn: bookingService.listMySubscriptions });
-  const visits = useQuery({ queryKey: ['visits'], queryFn: visitService.listCustomerVisits });
+  const visits = useQuery({ queryKey: ['visits', 'upcoming'], queryFn: visitService.listUpcoming });
   const reqs = useQuery({ queryKey: ['requests'], queryFn: bookingService.listMyRequests });
   const notes = useQuery({ queryKey: ['notifications', 'customer'], queryFn: () => notificationService.list('customer') });
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;

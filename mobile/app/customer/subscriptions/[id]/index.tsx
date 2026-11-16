@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, ChefCard, ConfirmDialog, InfoRow, ListGroup, ListRow, Notice, PlanCard, QueryView, Screen } from '../../../../src/components';
+import { Button, Card, ChefCard, ConfirmDialog, InfoRow, ListGroup, ListRow, Notice, PlanCard, QueryView, Screen, Section, Txt } from '../../../../src/components';
+import { ENDED_VISIT, startOf, UpcomingVisits } from '../../../../src/features/bookings/visits';
 import { MEAL_LABELS } from '../../../../src/constants';
-import { bookingService } from '../../../../src/services';
+import { bookingService, visitService } from '../../../../src/services';
 import { useToast } from '../../../../src/store';
 import type { CancelPreview } from '../../../../src/types';
 import { formatCurrency, formatDateTime, isNetworkError } from '../../../../src/utils';
@@ -14,6 +15,10 @@ export default function SubscriptionDetails() {
   const [cancelling, setCancelling] = useState(false);
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ['subscription', id], queryFn: () => bookingService.getSubscription(id) });
+  // Same cache as the Bookings tab; this plan's visits are the ones whose refId is the subscription.
+  const visits = useQuery({ queryKey: ['visits', 'upcoming'], queryFn: visitService.listUpcoming });
+  const upcoming = (visits.data ?? []).filter((v) => v.kind === 'subscription' && v.refId === id && !ENDED_VISIT.includes(v.status))
+    .sort((a, b) => startOf(a).localeCompare(startOf(b)));
   // The refund is always the server's number for "now"; re-read each time the dialog opens.
   const preview = useQuery({ queryKey: ['subscription', id, 'cancel-preview'], queryFn: () => bookingService.getCancelPreview(id),
     enabled: cancelling, gcTime: 0, staleTime: 0 });
@@ -21,17 +26,26 @@ export default function SubscriptionDetails() {
     mutationFn: () => bookingService.cancelSubscription(id, 'Cancelled by customer in the app'),
     onSuccess: ({ refundPaise }) => {
       setCancelling(false);
-      ['subscription', 'subscriptions', 'schedule', 'payment', 'payments', 'requests', 'history'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ['subscription', 'subscriptions', 'schedule', 'payment', 'payments', 'requests', 'history', 'visits'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       useToast.getState().show(refundPaise ? 'Subscription cancelled. Refund requested' : 'Subscription cancelled');
     },
     onError: () => setCancelling(false),
   });
   return (
-    <Screen eyebrow="Subscription" title="Your plan" refreshing={query.isRefetching} onRefresh={query.refetch}>
+    <Screen eyebrow="Subscription" title="Your plan" refreshing={query.isRefetching} onRefresh={() => Promise.all([query.refetch(), visits.refetch()])}>
       <QueryView query={query} empty={{ title: 'Subscription not found' }}>
         {(s) => (
           <>
             <PlanCard sub={s} />
+            {s.status !== 'pending_payment' && (
+              <Section eyebrow={upcoming.length ? `Upcoming visits · ${upcoming.length}` : 'Upcoming visits'}>
+                {upcoming.length ? <UpcomingVisits visits={upcoming.slice(0, 10)} />
+                  : <Txt variant="small">{visits.isPending ? 'Loading visits…' : 'No upcoming visits for this plan.'}</Txt>}
+                {upcoming.length > 10 && (
+                  <Button title="See full schedule" variant="ghost" small onPress={() => router.push({ pathname: '/customer/subscriptions/[id]/schedule', params: { id: s.id } })} />
+                )}
+              </Section>
+            )}
             {s.chef ? <ChefCard chef={s.chef} /> : s.chefName ? null : (
               <Notice icon="person-outline">Delco will assign your chef before your first visit.</Notice>
             )}

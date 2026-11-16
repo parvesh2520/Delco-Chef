@@ -8,7 +8,7 @@ import { chefService, visitService } from '../../../src/services';
 export default function ChefUpcoming() {
   const chefId = useChefId();
   const assignments = useQuery({ queryKey: ['assignments'], queryFn: chefService.listAssignments });
-  const visits = useQuery({ queryKey: ['chefVisits', chefId], queryFn: () => visitService.listChefVisits(chefId) });
+  const visits = useQuery({ queryKey: ['chefVisits', chefId, 'upcoming'], queryFn: visitService.listUpcoming });
 
   if (assignments.isPending || visits.isPending) return <Screen title="Upcoming"><LoadingState /></Screen>;
   const offers = (assignments.data ?? []).filter((a) => a.status === 'offered');

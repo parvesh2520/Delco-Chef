@@ -9,8 +9,9 @@ import { visitService } from '../../../../src/services';
 export default function ChefJobs() {
   const chefId = useChefId();
   const query = useQuery({
-    queryKey: ['chefVisits', chefId],
-    queryFn: () => visitService.listChefVisits(chefId),
+    queryKey: ['chefVisits', chefId, 'today'],
+    // Today includes visits already finished, so both lists are needed.
+    queryFn: async () => (await Promise.all([visitService.listUpcoming(), visitService.listPast()])).flat(),
     select: (vs) => vs.filter((v) => isToday(v.date)).sort((a, b) => a.date.localeCompare(b.date)),
   });
   return (

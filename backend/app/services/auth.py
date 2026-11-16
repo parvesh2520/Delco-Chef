@@ -4,6 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -39,19 +40,49 @@ def normalize_phone(raw: str) -> str:
 
 
 # ---------------- OTP delivery (provider interface) ----------------
+def _log_code(phone: str, code: str) -> None:
+    """Outside production, or with OTP_LOG_CODES=true (test deployments), the code is also readable in the server log."""
+    if settings.otp_codes_in_log:
+        log.info("DEV OTP for %s: %s (valid 5 min)", security.mask_phone(phone), code, extra={"allow_secret": True})
+
+
 class LogOtpProvider:
-    """Mock SMS provider (assignment §3.1). The code is written to the server log outside production, or in production
-    only when OTP_LOG_CODES=true (demo deployments without an SMS provider)."""
+    """Mock SMS provider (assignment §3.1): the code only goes to the server log."""
 
     def send(self, phone: str, code: str) -> None:
-        if settings.otp_codes_in_log:
-            log.info("DEV OTP for %s: %s (valid 5 min)", security.mask_phone(phone), code, extra={"allow_secret": True})
-        else:
+        _log_code(phone, code)
+        if not settings.otp_codes_in_log:
             log.warning("OTP issued for %s via log provider; configure a real SMS provider", security.mask_phone(phone))
 
 
-OTP_PROVIDERS = {"log": LogOtpProvider}
-otp_provider = OTP_PROVIDERS[settings.OTP_PROVIDER]()
+class Fast2SmsOtpProvider:
+    """SMS through Fast2SMS's OTP route (fixed, pre-approved OTP text, so no DLT template of our own is needed)."""
+    URL = "https://www.fast2sms.com/dev/bulkV2"
+
+    def __init__(self):
+        if not settings.FAST2SMS_API_KEY:
+            raise RuntimeError("OTP_PROVIDER=fast2sms needs FAST2SMS_API_KEY.")
+
+    def send(self, phone: str, code: str) -> None:
+        _log_code(phone, code)  # logged first, so a failed SMS never hides the code during testing
+        try:
+            r = httpx.post(self.URL, headers={"authorization": settings.FAST2SMS_API_KEY}, timeout=10,
+                           json={"route": "otp", "variables_values": code, "numbers": phone})
+            ok = r.status_code == 200 and r.json().get("return") is True
+        except (httpx.HTTPError, ValueError):
+            ok, r = False, None
+        if not ok:
+            log.error("Fast2SMS did not accept the OTP for %s: %s", security.mask_phone(phone),
+                      (r.text[:200] if r is not None else "unreachable"))
+            raise AppError("OTP_SEND_FAILED", "We couldn't send the code by SMS. Try again in a moment.", 503)
+
+
+OTP_PROVIDERS = {"log": LogOtpProvider, "fast2sms": Fast2SmsOtpProvider}
+try:
+    otp_provider = OTP_PROVIDERS[settings.OTP_PROVIDER]()
+except RuntimeError as e:  # e.g. fast2sms chosen before its key was set: keep sign-in working through the log, loudly
+    log.error("OTP provider %s unusable (%s); falling back to the log provider", settings.OTP_PROVIDER, e)
+    otp_provider = LogOtpProvider()
 
 
 def _user_by_phone(db: Session, phone: str) -> User | None:

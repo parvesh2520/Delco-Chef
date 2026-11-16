@@ -50,12 +50,12 @@ class RazorpayGateway:
             raise RuntimeError("Only Razorpay TEST keys are allowed (rzp_test_…).")
         self.key_id, self.key_secret, self.webhook_secret = key_id, key_secret, webhook_secret
 
-    def _post(self, path: str, body: dict) -> dict:
-        return self._call("POST", path, body)
+    def _post(self, path: str, body: dict, headers: dict | None = None) -> dict:
+        return self._call("POST", path, body, headers)
 
-    def _call(self, method: str, path: str, body: dict | None = None) -> dict:
+    def _call(self, method: str, path: str, body: dict | None = None, headers: dict | None = None) -> dict:
         try:
-            r = httpx.request(method, f"{self.base}{path}", json=body, auth=(self.key_id, self.key_secret), timeout=15)
+            r = httpx.request(method, f"{self.base}{path}", json=body, headers=headers, auth=(self.key_id, self.key_secret), timeout=15)
         except httpx.HTTPError:
             raise AppError("GATEWAY_UNAVAILABLE", "Payment gateway is unreachable. Try again shortly.", 503) from None
         if r.status_code >= 400:
@@ -80,8 +80,10 @@ class RazorpayGateway:
         except AppError:
             pass  # already paid/expired/cancelled at the gateway — our DB status is authoritative for refusal
 
-    def refund(self, payment_ref: str, amount_paise: int) -> str:
-        return self._post(f"/payments/{payment_ref}/refund", {"amount": amount_paise, "speed": "normal"})["id"]
+    def refund(self, payment_ref: str, amount_paise: int, key: str) -> str:
+        """`key` (10+ chars) makes a retry return the same refund instead of sending the money twice."""
+        return self._post(f"/payments/{payment_ref}/refund", {"amount": amount_paise, "speed": "normal"},
+                          {"X-Refund-Idempotency": key})["id"]
 
     def fetch_payment(self, payment_ref: str) -> dict | None:
         """Server-to-gateway check used before trusting a browser redirect: the payment's real status and amount."""
@@ -136,8 +138,8 @@ class SandboxGateway:
     def cancel_link(self, link_id: str) -> None:
         return None
 
-    def refund(self, payment_ref: str, amount_paise: int) -> str:
-        return f"rfnd_sbx_{secrets.token_hex(8)}"
+    def refund(self, payment_ref: str, amount_paise: int, key: str) -> str:
+        return f"rfnd_sbx_{hashlib.sha256(key.encode()).hexdigest()[:16]}"  # same key, same refund, like Razorpay
 
     def fetch_payment(self, payment_ref: str) -> dict | None:
         return None  # no gateway API to ask: in development the signed callback is the proof (never in production)

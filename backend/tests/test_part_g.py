@@ -75,6 +75,7 @@ def test_unreviewed_exception_is_held_then_carried_forward(db):
     db.commit()
     payouts.run_cycle(db, NEXT)
     payouts.run_cycle(db, WEEK)  # re-running the earlier pending cycle never pays the carried visit twice
+    payouts.run_cycle(db, NEXT)  # re-running the cycle holding the carried line (with P5 in it) keeps that line
     items = db.scalars(select(PayoutItem).where(PayoutItem.visit_id == odd.id)).all()
     assert len(items) == 1 and items[0].amount_paise == 64_000 * 25 // 60
     assert db.scalar(select(Payout.cycle_start).where(Payout.id == items[0].payout_id)) == NEXT

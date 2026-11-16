@@ -11,6 +11,7 @@ from app.api.deps import ADMIN_ROLES, Principal, current, customer_only
 from app.api.schemas import CallbackIn
 from app.core.database import get_db
 from app.core.errors import AppError, not_found
+from app.domain import rupees
 from app.models import Payment, PaymentLink, Subscription
 from app.services import payments as svc
 from app.services.gateway import SandboxGateway, get_gateway
@@ -108,13 +109,12 @@ def sandbox_page(link_id: str, db: Session = Depends(get_db)):
     link = db.scalar(select(PaymentLink).where(PaymentLink.gateway_link_id == link_id))
     if not link:
         raise not_found("Link")
-    amount = f"₹{link.amount_paise // 100:,}.{link.amount_paise % 100:02d}"
     lid = html.escape(link_id)
     return f"""<!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1"><title>Test checkout</title>
 <style>body{{font-family:system-ui;margin:0;padding:24px;background:#F7F2EA;color:#2D2340}}.c{{max-width:420px;margin:auto;background:#fff;border-radius:16px;padding:24px}}
 button{{width:100%;padding:14px;border:0;border-radius:12px;font-size:16px;margin-top:12px}}.p{{background:#2D2340;color:#fff}}.f{{background:#fde8e8;color:#9b1c1c}}
 .t{{background:#fff3cd;padding:8px 12px;border-radius:8px;font-size:13px}}</style></head><body><div class=c>
-<p class=t>TEST MODE · Delco sandbox gateway · no real money moves</p><h2>Delco Chefs</h2><p>Amount <b>{amount}</b></p>
+<p class=t>TEST MODE · Delco sandbox gateway · no real money moves</p><h2>Delco Chefs</h2><p>Amount <b>{rupees(link.amount_paise)}</b></p>
 <p>Link status: <b>{html.escape(link.status)}</b></p>
 <form method=post><input type=hidden name=method value=upi><button class=p name=outcome value=paid>Pay {amount} (test)</button>
 <button class=f name=outcome value=failed>Simulate failure (test)</button></form></div></body></html>"""

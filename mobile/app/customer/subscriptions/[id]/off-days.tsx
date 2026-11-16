@@ -49,7 +49,7 @@ function OffDayEditor({ sub, schedule }: { sub: Subscription; schedule: Schedule
   const save = useMutation({
     mutationFn: () => bookingService.saveOffDays(sub.id, days),
     onSuccess: () => {
-      ['subscription', 'subscriptions', 'schedule'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ['subscription', 'subscriptions', 'schedule', 'visits'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       useToast.getState().show('Off-days updated. Your chef has been told.');
       router.back();
     },

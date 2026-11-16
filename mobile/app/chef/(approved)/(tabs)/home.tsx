@@ -44,7 +44,7 @@ function nextAction(active: Visit | undefined, offers: Assignment[], next: Visit
 export default function ChefHome() {
   const chefId = useChefId();
   const name = useSession()?.user.fullName.split(' ')[0] || 'Chef';
-  const visits = useQuery({ queryKey: ['chefVisits', chefId], queryFn: () => visitService.listChefVisits(chefId) });
+  const visits = useQuery({ queryKey: ['chefVisits', chefId, 'upcoming'], queryFn: visitService.listUpcoming });
   const assignments = useQuery({ queryKey: ['assignments'], queryFn: chefService.listAssignments });
 
   const today = (visits.data ?? []).filter((v) => isToday(v.date) && v.status !== 'completed');

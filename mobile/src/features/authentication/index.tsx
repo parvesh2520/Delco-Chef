@@ -104,6 +104,7 @@ export function OtpVerify({ phone, portal }: { phone: string; portal: LoginPorta
       }
     >
       <CodeInput
+        smsAutofill
         length={6}
         value={code}
         onChange={(c) => (verify.isError && verify.reset(), setCode(c))}

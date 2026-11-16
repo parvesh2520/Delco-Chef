@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, not_found
-from app.domain import board
+from app.domain import board, rupees
 from app.domain.refunds import RefundNotAllowed, refund_amount
 from app.models import Payment, PaymentEvent, PaymentLink, Refund, ServiceRequest, Subscription, User, Visit
 from app.services import settings as settings_svc
@@ -34,9 +34,8 @@ def _new_link(db: Session, p: Payment, s: Settings) -> PaymentLink:
     link = PaymentLink(payment_id=p.id, gateway_link_id=link_id, url=url, amount_paise=p.amount_paise, expires_at=expires)
     db.add(link)
     db.flush()
-    amount = f"₹{p.amount_paise // 100:,}.{p.amount_paise % 100:02d}"
     notify(db, "payment_link_created", p.customer_id, "Payment link ready",
-           f"Pay {amount} within {s.int('link_validity_h')} hours to start your subscription.", f"/customer/payment/{p.id}",
+           f"Pay {rupees(p.amount_paise)} within {s.int('link_validity_h')} hours to start your subscription.", f"/customer/payment/{p.id}",
            channels=("push", "sms", "email"))
     return link
 
@@ -106,8 +105,7 @@ def _mark_paid(db: Session, p: Payment, link: PaymentLink, ev: GatewayEvent) -> 
         from app.services.bookings import move
         move(db, r, board.Stage.PAYMENT_DONE, "payment", SYSTEM, f"Payment {p.id} confirmed")
         r.paid_at = t
-    amount = f"₹{p.amount_paise // 100:,}.{p.amount_paise % 100:02d}"
-    notify(db, "payment_success", p.customer_id, "Payment received", f"{amount} received. Your subscription is active.",
+    notify(db, "payment_success", p.customer_id, "Payment received", f"{rupees(p.amount_paise)} received. Your subscription is active.",
            f"/customer/payment/{p.id}")
     return "paid"
 
@@ -117,7 +115,8 @@ def _refund_dead_link(db: Session, p: Payment, ev: GatewayEvent) -> str:
     if db.scalar(select(Refund).where(Refund.gateway_refund_id.is_not(None), Refund.payment_id == p.id,
                                       Refund.reason.like(f"%{ev.payment_ref}%"))):
         return "dead_link_already_refunded"
-    rid = get_gateway().refund(ev.payment_ref, ev.amount_paise or p.amount_paise)
+    # Keyed on the gateway payment: if our commit fails and the webhook is redelivered, the gateway returns the same refund.
+    rid = get_gateway().refund(ev.payment_ref, ev.amount_paise or p.amount_paise, key=f"deadlink_{ev.payment_ref}")
     db.add(Refund(payment_id=p.id, amount_paise=ev.amount_paise or p.amount_paise, gateway_refund_id=rid, status="requested",
                   reason=f"Auto-refund: paid on a dead link ({ev.payment_ref})"))
     notify_admins(db, "payment_dead_link", "Payment on dead link", f"Payment {p.id} received on an expired/replaced link and was refunded.",
@@ -163,7 +162,7 @@ def process_event(db: Session, ev: GatewayEvent) -> str:
         p = _lock_payment(db, rf.payment_id)
         p.refunded_paise = min(p.amount_paise, p.refunded_paise + rf.amount_paise)
         p.status = "REFUNDED" if p.refunded_paise >= p.amount_paise else "PARTIALLY_REFUNDED"
-        notify(db, "refund_processed", p.customer_id, "Refund processed", f"₹{rf.amount_paise / 100:,.2f} refunded.", f"/customer/payment/{p.id}")
+        notify(db, "refund_processed", p.customer_id, "Refund processed", f"{rupees(rf.amount_paise)} refunded.", f"/customer/payment/{p.id}")
         return "refund_processed"
     if link is None:
         by_ref = _payment_for_reference(db, ev.reference)
@@ -338,12 +337,19 @@ def cancellation_preview(db: Session, customer: User, sub_id: int) -> dict:
 def cancel_subscription(db: Session, customer: User, sub_id: int, reason: str | None) -> dict:
     sub, p = _own_subscription(db, customer, sub_id, lock=True)
     r = db.scalar(select(ServiceRequest).where(ServiceRequest.id == sub.request_id).with_for_update())
-    refund_paise = refund_quote(db, sub, p, now())
+    # A refund row without a gateway id is a cancel that recorded its refund but did not finish (e.g. the final commit failed).
+    pending = p and db.scalar(select(Refund).where(Refund.payment_id == p.id, Refund.status == "requested",
+                                                   Refund.gateway_refund_id.is_(None)))
+    refund_paise = pending.amount_paise if pending else refund_quote(db, sub, p, now())
     if refund_paise:
-        # Requested from the gateway and tracked as "requested": the payment becomes REFUNDED / PARTIALLY_REFUNDED only
-        # when the gateway confirms it (refund.processed). The subscription row lock above stops a second request.
-        rid = get_gateway().refund(p.gateway_payment_id, refund_paise)
-        db.add(Refund(payment_id=p.id, amount_paise=refund_paise, gateway_refund_id=rid, reason=reason or "Customer cancelled"))
+        if not pending:
+            # Recorded and committed before any money moves, then finished under fresh locks by the call below.
+            db.add(Refund(payment_id=p.id, amount_paise=refund_paise, reason=reason or "Customer cancelled"))
+            db.commit()
+            return cancel_subscription(db, customer, sub_id, reason)
+        # Tracked as "requested": the payment becomes REFUNDED / PARTIALLY_REFUNDED only when the gateway confirms it
+        # (refund.processed). Keyed on our refund row, so a retry gets the same gateway refund, never a second one.
+        pending.gateway_refund_id = get_gateway().refund(p.gateway_payment_id, refund_paise, key=f"delco_refund_{pending.id}")
     elif sub.status == "pending_payment":
         cancel_unpaid_order(db, sub, now())
     sub.status, sub.cancelled_at = "cancelled", now()

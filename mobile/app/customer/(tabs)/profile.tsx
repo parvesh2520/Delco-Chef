@@ -11,7 +11,7 @@ import { maskPhone } from '../../../src/utils';
 export default function Profile() {
   const query = useQuery({ queryKey: ['profile'], queryFn: customerService.getProfile });
   const signOut = useSignOut();
-  const visits = useQuery({ queryKey: ['visits'], queryFn: visitService.listCustomerVisits });
+  const visits = useQuery({ queryKey: ['visits', 'past'], queryFn: visitService.listPast });
   const subs = useQuery({ queryKey: ['subscriptions'], queryFn: bookingService.listMySubscriptions });
   const done = (visits.data ?? []).filter((v) => v.status === 'completed');
   const chefs = new Set(done.map((v) => v.chefId).filter(Boolean)).size;

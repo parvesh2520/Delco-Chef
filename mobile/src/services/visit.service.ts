@@ -23,9 +23,10 @@ export interface AttendanceResult {
 const TRACKING_CODES = ['TRACKING_NOT_AVAILABLE_YET', 'TRACKING_NOT_STARTED', 'TRACKING_ENDED'];
 
 export const visitService = {
-  // No optional params: these are passed directly as TanStack `queryFn`s.
-  listCustomerVisits: () => api.get<Visit[]>('/visits', { scope: 'all' }),
-  listChefVisits: (_chefId?: string) => api.get<Visit[]>('/visits', { scope: 'all' }),
+  // No optional params: these are passed directly as TanStack `queryFn`s. The server caps each list at 100, so never
+  // use scope 'all' (oldest first): upcoming is soonest first, past is newest first. Works for customers and chefs.
+  listUpcoming: () => api.get<Visit[]>('/visits', { scope: 'upcoming' }),
+  listPast: () => api.get<Visit[]>('/visits', { scope: 'past' }),
   get: (id: string) => api.get<Visit>(`/visits/${id}`),
   getCustomerContact: (id: string) =>
     api.get<{ name: string; phone: string; address: Visit['address'] }>(`/visits/${id}/customer`),

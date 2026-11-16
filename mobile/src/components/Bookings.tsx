@@ -84,9 +84,10 @@ export function BookingCard({ icon, tint, title, subtitle, right, progress, onPr
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <Txt variant="h3" numberOfLines={1}>{title}</Txt>
-          <Txt variant="small" numberOfLines={1}>{subtitle}</Txt>
+          <Txt variant="small" numberOfLines={2}>{subtitle}</Txt>
         </View>
-        {right}
+        {/* Badge pins itself to the top (alignSelf); this keeps it centred on the icon and title. */}
+        {right && <View style={styles.bookingRight}>{right}</View>}
       </View>
       {progress && progress.total > 0 && (
         <View style={{ gap: 6 }}>
@@ -171,6 +172,7 @@ export function Stars({ value, onChange, size = 32 }: { value: number; onChange?
 const styles = StyleSheet.create({
   booking: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md, gap: 12, ...shadow },
   bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  bookingRight: { alignSelf: 'center', alignItems: 'flex-end', flexShrink: 0 },
   tile: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   bookingTrack: { height: 6, borderRadius: 3, backgroundColor: colors.sand, overflow: 'hidden' },
   bookingFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },

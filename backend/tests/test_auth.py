@@ -143,3 +143,40 @@ def test_new_customer_end_to_end_onboarding(client, otp):
     assert r.status_code == 201 and r.json()["status"] == "pending_assignment"
     me = client.get(f"{V}/auth/me", headers=s["h"]).json()
     assert me["onboarded"] is True and me["user"]["fullName"] == "New Person"
+
+
+def test_fast2sms_sends_the_code_and_logs_it(client, db, monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services import auth as auth_svc
+
+    sent = []
+
+    def fake_post(url, headers, json, timeout):
+        sent.append((url, headers, json))
+        return httpx.Response(200, json={"return": True, "request_id": "r1", "message": ["SMS sent successfully."]})
+
+    monkeypatch.setattr(settings, "FAST2SMS_API_KEY", "test-key")
+    monkeypatch.setattr(auth_svc.httpx, "post", fake_post)
+    monkeypatch.setattr(auth_svc, "otp_provider", auth_svc.Fast2SmsOtpProvider())
+    logged = []
+    monkeypatch.setattr(auth_svc.log, "info", lambda msg, *a, **k: logged.append(msg % a))
+    assert client.post(f"{V}/auth/otp/request", json={"phone": "9876500071", "portal": "customer"}).status_code == 200
+    (url, headers, body), = sent
+    assert url == auth_svc.Fast2SmsOtpProvider.URL and headers == {"authorization": "test-key"}
+    assert body["route"] == "otp" and body["numbers"] == "9876500071" and len(body["variables_values"]) == 6
+    assert any(body["variables_values"] in m for m in logged)  # still readable in the log (testing switch)
+    r = client.post(f"{V}/auth/otp/verify", json={"phone": "9876500071", "code": body["variables_values"], "portal": "customer"})
+    assert r.status_code == 200
+
+
+def test_fast2sms_refusal_is_a_clear_error(client, monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services import auth as auth_svc
+
+    monkeypatch.setattr(settings, "FAST2SMS_API_KEY", "test-key")
+    monkeypatch.setattr(auth_svc.httpx, "post", lambda *a, **k: httpx.Response(401, json={"return": False, "message": "Invalid key"}))
+    monkeypatch.setattr(auth_svc, "otp_provider", auth_svc.Fast2SmsOtpProvider())
+    r = client.post(f"{V}/auth/otp/request", json={"phone": "9876500072", "portal": "customer"})
+    assert r.status_code == 503 and r.json()["error"]["code"] == "OTP_SEND_FAILED"

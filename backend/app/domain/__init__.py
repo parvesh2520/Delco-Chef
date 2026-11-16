@@ -16,3 +16,8 @@ def ist_datetime(d: date, t: time) -> datetime:
 def parse_hhmm(s: str) -> time:
     h, m = s.strip().split(":")
     return time(int(h), int(m))
+
+
+def rupees(paise: int) -> str:
+    """Integer paise → "₹1,234.50" (exact; no float rounding)."""
+    return f"₹{paise // 100:,}.{paise % 100:02d}"

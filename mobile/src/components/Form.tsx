@@ -61,7 +61,8 @@ export function TextField({ label, error, hint, prefix, suffix, style, multiline
 }
 
 /** Segmented digit boxes over a hidden input (OTP / 4-digit visit code). */
-export function CodeInput({ length, value, onChange, error, success }: { length: number; value: string; onChange: (v: string) => void; error?: string; success?: boolean }) {
+/** `smsAutofill`: the code arrives by SMS, so the keyboard offers it (Android sms-otp hint, iOS one-time code). */
+export function CodeInput({ length, value, onChange, error, success, smsAutofill }: { length: number; value: string; onChange: (v: string) => void; error?: string; success?: boolean; smsAutofill?: boolean }) {
   const ref = useRef<React.ComponentRef<typeof TextInput>>(null);
   const [x, shake] = useShake();
   const hadError = useRef(!!error);
@@ -91,6 +92,8 @@ export function CodeInput({ length, value, onChange, error, success }: { length:
         }}
         keyboardType="number-pad"
         maxLength={length}
+        autoComplete={smsAutofill ? 'sms-otp' : 'off'}
+        textContentType={smsAutofill ? 'oneTimeCode' : 'none'}
         autoFocus
         style={styles.hidden}
       />
