@@ -178,5 +178,9 @@ def test_fast2sms_refusal_is_a_clear_error(client, monkeypatch):
     monkeypatch.setattr(settings, "FAST2SMS_API_KEY", "test-key")
     monkeypatch.setattr(auth_svc.httpx, "post", lambda *a, **k: httpx.Response(401, json={"return": False, "message": "Invalid key"}))
     monkeypatch.setattr(auth_svc, "otp_provider", auth_svc.Fast2SmsOtpProvider())
-    r = client.post(f"{V}/auth/otp/request", json={"phone": "9876500072", "portal": "customer"})
+    # Codes in the log (test deployment): sign-in carries on, the code is readable there.
+    assert client.post(f"{V}/auth/otp/request", json={"phone": "9876500072", "portal": "customer"}).status_code == 200
+    # Codes not logged (real deployment): the customer is told the SMS failed.
+    monkeypatch.setitem(settings.__dict__, "otp_codes_in_log", False)
+    r = client.post(f"{V}/auth/otp/request", json={"phone": "9876500073", "portal": "customer"})
     assert r.status_code == 503 and r.json()["error"]["code"] == "OTP_SEND_FAILED"

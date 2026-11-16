@@ -123,7 +123,12 @@ def request_otp(db: Session, raw_phone: str, portal: str) -> dict:
     code = security.numeric_code(6)
     db.add(OtpChallenge(phone_hmac=phash, code_hash=security.secret_hash(f"{phash}:{code}"), portal=portal, expires_at=t + OTP_TTL))
     db.commit()
-    otp_provider.send(phone, code)
+    try:
+        otp_provider.send(phone, code)
+    except AppError as e:
+        # Test deployments (codes in the log): a failed SMS must not block sign-in; the provider already logged why.
+        if e.code != "OTP_SEND_FAILED" or not settings.otp_codes_in_log:
+            raise
     return {"sentTo": security.mask_phone(phone), "expiresInSec": int(OTP_TTL.total_seconds()), "resendAfterSec": 30}
 
 
