@@ -2,12 +2,11 @@ import React from 'react';
 import { Text, type TextProps, type TextStyle } from 'react-native';
 import { colors, fonts } from '../theme';
 
-type Variant = 'hero' | 'display' | 'h1' | 'h2' | 'h3' | 'body' | 'bodyStrong' | 'small' | 'caption' | 'eyebrow' | 'label';
+type Variant = 'display' | 'h1' | 'h2' | 'h3' | 'body' | 'bodyStrong' | 'small' | 'caption' | 'eyebrow' | 'label';
 
 const styles: Record<Variant, TextStyle> = {
-  hero: { fontFamily: fonts.heading, fontSize: 56, lineHeight: 62, letterSpacing: -1 },
-  display: { fontFamily: fonts.heading, fontSize: 38, lineHeight: 44 },
-  h1: { fontFamily: fonts.heading, fontSize: 32, lineHeight: 38 },
+  display: { fontFamily: fonts.heading, fontSize: 34, lineHeight: 40 },
+  h1: { fontFamily: fonts.heading, fontSize: 28, lineHeight: 34 },
   h2: { fontFamily: fonts.heading, fontSize: 22, lineHeight: 28 },
   h3: { fontFamily: fonts.bold, fontSize: 17, lineHeight: 23 },
   body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22 },

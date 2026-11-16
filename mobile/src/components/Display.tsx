@@ -106,10 +106,10 @@ export function NextActionCard({ eyebrow, title, detail, note, icon, actions = [
   );
 }
 
-export type HeroAction = { title: string; icon?: keyof typeof Ionicons.glyphMap; onPress: () => void };
+type HeroAction = { title: string; icon?: keyof typeof Ionicons.glyphMap; onPress: () => void };
 
 /** Main action on the plum card: a solid orange pill lifted by a soft warm shadow. */
-export function HeroButton({ title, icon, onPress }: HeroAction) {
+function HeroButton({ title, icon, onPress }: HeroAction) {
   return (
     <PressableScale onPress={onPress} to={0.97} accessibilityRole="button" accessibilityLabel={title} style={styles.heroBtn}>
       <Txt style={styles.heroBtnText} color={colors.primary}>{title}</Txt>
@@ -123,7 +123,7 @@ export function HeroButton({ title, icon, onPress }: HeroAction) {
 }
 
 /** Secondary action on the plum card: a frosted glass chip. A trailing code ("Code 4821") is set in spaced figures. */
-export function HeroChip({ title, icon, onPress }: HeroAction) {
+function HeroChip({ title, icon, onPress }: HeroAction) {
   const m = /^(.*?)\s+(\d{3,6})$/.exec(title);
   return (
     <PressableScale onPress={onPress} to={0.95} accessibilityRole="button" accessibilityLabel={title} style={styles.heroChip}>
