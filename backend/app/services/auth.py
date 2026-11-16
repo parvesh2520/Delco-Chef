@@ -1,4 +1,5 @@
 """A1–A4: phone OTP sign-in, abuse limits, access/refresh tokens, one role per phone, admin provisioning only."""
+import base64
 import logging
 import re
 import uuid
@@ -77,7 +78,73 @@ class Fast2SmsOtpProvider:
             raise AppError("OTP_SEND_FAILED", "We couldn't send the code by SMS. Try again in a moment.", 503)
 
 
-OTP_PROVIDERS = {"log": LogOtpProvider, "fast2sms": Fast2SmsOtpProvider}
+class MessageCentralOtpProvider:
+    """Message Central VerifyNow: no DLT setup of our own. It generates the code and checks it, so `send` returns its
+    verificationId and the code itself can never be logged."""
+    BASE = "https://cpaas.messagecentral.com"
+
+    def __init__(self):
+        if not (settings.MESSAGE_CENTRAL_CUSTOMER_ID and settings.MESSAGE_CENTRAL_PASSWORD):
+            raise RuntimeError("OTP_PROVIDER=messagecentral needs MESSAGE_CENTRAL_CUSTOMER_ID and MESSAGE_CENTRAL_PASSWORD.")
+        self._token: str | None = None
+
+    def _new_token(self) -> str:
+        key = base64.b64encode(settings.MESSAGE_CENTRAL_PASSWORD.encode()).decode()
+        r = httpx.request("GET", f"{self.BASE}/auth/v1/authentication/token", timeout=10,
+                          params={"customerId": settings.MESSAGE_CENTRAL_CUSTOMER_ID, "key": key, "scope": "NEW", "country": "91"})
+        token = r.json().get("token") if r.status_code == 200 else None
+        if not token:
+            raise ValueError(f"token refused: HTTP {r.status_code} {r.text[:200]}")
+        return token
+
+    def _call(self, method: str, path: str, params: dict) -> dict:
+        """One request with the cached token; a token the gateway no longer accepts is renewed once. Returns the JSON body
+        (Message Central reports errors such as a wrong code in the body's responseCode, whatever the HTTP status)."""
+        for attempt in (1, 2):
+            self._token = self._token or self._new_token()
+            r = httpx.request(method, f"{self.BASE}{path}", params=params, headers={"authToken": self._token}, timeout=10)
+            if r.status_code in (401, 403) and attempt == 1:
+                self._token = None
+                continue
+            return r.json()
+        raise ValueError("token rejected twice")
+
+    def send(self, phone: str, code: str) -> str:
+        try:
+            body = self._call("POST", "/verification/v3/send", {
+                "countryCode": "91", "customerId": settings.MESSAGE_CENTRAL_CUSTOMER_ID, "flowType": "SMS",
+                "mobileNumber": phone, "otpLength": 6})
+            ref = body.get("responseCode") == 200 and (body.get("data") or {}).get("verificationId")
+        except (httpx.HTTPError, ValueError) as e:
+            body, ref = repr(e), None
+        if not ref:
+            log.error("Message Central did not send the OTP for %s: %s", security.mask_phone(phone), str(body)[:300])
+            _log_code(phone, code)  # test deployments fall back to our own code, readable in the log
+            raise AppError("OTP_SEND_FAILED", "We couldn't send the code by SMS. Try again in a moment.", 503)
+        log.info("OTP for %s sent by Message Central (verificationId %s)", security.mask_phone(phone), ref)
+        return str(ref)
+
+    def check(self, ref: str, code: str) -> bool:
+        """True when Message Central confirms the code, False for a wrong code. Expired or failed checks raise."""
+        try:
+            body = self._call("GET", "/verification/v3/validateOtp", {"verificationId": ref, "code": code})
+        except (httpx.HTTPError, ValueError) as e:
+            log.error("Message Central validateOtp failed: %r", e)
+            raise AppError("OTP_CHECK_FAILED", "We couldn't check the code right now. Try again in a moment.", 503) from None
+        rc = body.get("responseCode")
+        if rc == 200 and (body.get("data") or {}).get("verificationStatus") == "VERIFICATION_COMPLETED":
+            return True
+        if rc in (700, 702):  # VERIFICATION_FAILED, WRONG_OTP_PROVIDED
+            return False
+        if rc == 705:
+            raise AppError("OTP_EXPIRED", "This code has expired. Request a new code.", 400)
+        if rc == 703:
+            raise AppError("OTP_NOT_FOUND", "This code has already been used or replaced. Request a new code.", 400)
+        log.error("Message Central validateOtp answered %s", str(body)[:300])
+        raise AppError("OTP_CHECK_FAILED", "We couldn't check the code right now. Try again in a moment.", 503)
+
+
+OTP_PROVIDERS = {"log": LogOtpProvider, "fast2sms": Fast2SmsOtpProvider, "messagecentral": MessageCentralOtpProvider}
 try:
     otp_provider = OTP_PROVIDERS[settings.OTP_PROVIDER]()
 except RuntimeError as e:  # e.g. fast2sms chosen before its key was set: keep sign-in working through the log, loudly
@@ -124,7 +191,11 @@ def request_otp(db: Session, raw_phone: str, portal: str) -> dict:
     db.add(OtpChallenge(phone_hmac=phash, code_hash=security.secret_hash(f"{phash}:{code}"), portal=portal, expires_at=t + OTP_TTL))
     db.commit()
     try:
-        otp_provider.send(phone, code)
+        ref = otp_provider.send(phone, code)
+        if ref:  # the provider checks the code itself
+            db.execute(update(OtpChallenge).where(OtpChallenge.phone_hmac == phash, OtpChallenge.consumed_at.is_(None))
+                       .values(provider_ref=ref))
+            db.commit()
     except AppError as e:
         # Test deployments (codes in the log): a failed SMS must not block sign-in; the provider already logged why.
         if e.code != "OTP_SEND_FAILED" or not settings.otp_codes_in_log:
@@ -146,7 +217,11 @@ def verify_otp(db: Session, raw_phone: str, code: str, portal: str, device: str 
         raise AppError("OTP_NOT_FOUND", "Request a new code for this app.", 400)
     if ch.expires_at <= t:
         raise AppError("OTP_EXPIRED", "This code has expired. Request a new code.", 400)
-    if not (code or "").isdigit() or not security.constant_eq(ch.code_hash, security.secret_hash(f"{phash}:{code}")):
+    if ch.provider_ref:
+        right = (code or "").isdigit() and otp_provider.check(ch.provider_ref, code)
+    else:
+        right = (code or "").isdigit() and security.constant_eq(ch.code_hash, security.secret_hash(f"{phash}:{code}"))
+    if not right:
         ch.attempts += 1
         if ch.attempts >= OTP_MAX_ATTEMPTS:
             ch.locked_until, ch.consumed_at = t + OTP_LOCK, t

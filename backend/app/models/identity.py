@@ -38,6 +38,8 @@ class OtpChallenge(IdMixin, TimestampMixin, Base):
     attempts: Mapped[int] = mapped_column(SmallInteger, server_default="0", nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the SMS provider makes and checks the code itself (Message Central's verificationId); code_hash unused then.
+    provider_ref: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (Index("ix_otp_phone_created", "phone_hmac", "created_at"),)  # hourly rate-limit count
 
 

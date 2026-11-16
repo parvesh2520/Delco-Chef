@@ -18,8 +18,9 @@ services:
       - { key: RUN_MIGRATIONS, value: "false" }   # migrations are run deliberately (see the guide)
       - { key: DB_POOL_SIZE, value: "3" }         # ≤ 5 connections from one small instance
       - { key: DB_MAX_OVERFLOW, value: "2" }
-      - { key: OTP_PROVIDER, value: fast2sms }      # SMS via Fast2SMS's OTP route
-      - { key: FAST2SMS_API_KEY, sync: false }      # set in the Render dashboard, never in this file
+      - { key: OTP_PROVIDER, value: messagecentral }  # SMS via Message Central VerifyNow (it makes and checks the code)
+      - { key: MESSAGE_CENTRAL_CUSTOMER_ID, sync: false }  # set in the Render dashboard, never in this file
+      - { key: MESSAGE_CENTRAL_PASSWORD, sync: false }
       - { key: OTP_LOG_CODES, value: "true" }     # testing only: codes also appear in Render's logs (anyone with log access can sign in as anyone). Set false before real customers.
       - { key: DATABASE_URL, sync: false }        # Neon pooled URL
       - { key: DIRECT_URL, sync: false }          # Neon direct URL (migrations)
