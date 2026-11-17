@@ -1,0 +1,15 @@
+-- (e) stage summary AFTER: one statement, one scan grouped by stage
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=3570.16..3570.23 rows=5 width=81) (actual time=17.131..17.133 rows=6 loops=1)
+   Group Key: stage
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=60005 width=49) (actual time=0.006..3.091 rows=60005 loops=1)
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=193
+ Planning Time: 0.757 ms
+ Execution Time: 17.210 ms
+(10 rows)
+

@@ -54,6 +54,7 @@ def main() -> None:
       create temp table m as select row_number() over () - 1 as i, u, a from unnest(%s::bigint[], %s::bigint[]) as t(u, a);
       create temp table ch as select row_number() over () - 1 as i, c from unnest(%s::bigint[]) as t(c);
     """, (cust_ids, addr_ids, chef_ids))
+    cur.execute("select setseed(0.42)")  # same long-tail spread on every run
     cur.execute(f"""
       insert into service_requests (customer_id, service, stage, members, slot, start_date, diet, address_id, created_at, is_seed,
                                     cuisines, chef_id, assigned_at)
@@ -63,8 +64,9 @@ def main() -> None:
              (now() - interval '90 days' + (g * interval '129 seconds'))::date,
              'veg', m.a, now() - interval '90 days' + (g * interval '129 seconds'), true, array['North Indian'],
              ch.c, now() - interval '90 days' + (g * interval '129 seconds')
-      from generate_series(0, {BOOKINGS} - 1) g
-      join m on m.i = g % {CUSTOMERS} join ch on ch.i = g % {CHEFS}
+      -- Long tail (seeded, repeatable): most customers book a few times, regulars dozens of times.
+      from (select g, floor({CUSTOMERS} * power(random(), 1.5))::int as ci from generate_series(0, {BOOKINGS} - 1) g) s
+      join m on m.i = s.ci join ch on ch.i = g % {CHEFS}
     """)
     cur.execute(f"""
       insert into visits (kind, request_id, customer_id, address_id, lat, lng, chef_id, service_date, starts_at, ends_at, status, price_paise, is_seed)
@@ -81,7 +83,8 @@ def main() -> None:
       insert into location_points (visit_id, chef_id, lat, lng, accuracy_m, recorded_at)
       select v.id, v.chef_id, v.lat + (random() - 0.5) * 0.05, v.lng + (random() - 0.5) * 0.05, 10,
              v.starts_at - interval '40 minutes' + (s * interval '5 seconds')
-      from (select id, chef_id, lat, lng, starts_at from visits where is_seed order by id limit {POINTS // 40}) v,
+      -- only visits with a chef: the small fixed datasets (scripts.seed) include unassigned visits
+      from (select id, chef_id, lat, lng, starts_at from visits where is_seed and chef_id is not null order by id limit {POINTS // 40}) v,
            generate_series(1, 40) s
     """)
     raw.commit()

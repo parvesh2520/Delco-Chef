@@ -1,0 +1,34 @@
+﻿
+     ✓ ok
+
+     checks.........................: 100.00% 155131 out of 155131
+     data_received..................: 901 MB  1.4 MB/s
+     data_sent......................: 88 MB   137 kB/s
+     http_req_blocked...............: p(50)=2.09µs   p(95)=3.45µs   p(99)=5.16µs   avg=4.59µs   max=7.07ms  
+     http_req_connecting............: p(50)=0s       p(95)=0s       p(99)=0s       avg=1.08µs   max=7.02ms  
+     http_req_duration..............: p(50)=135.35ms p(95)=658.98ms p(99)=986.38ms avg=193.53ms max=2.32s   
+       { expected_response:true }...: p(50)=135.35ms p(95)=658.98ms p(99)=986.38ms avg=193.53ms max=2.32s   
+     ✓ { scenario:history }.........: p(50)=155.85ms p(95)=282.65ms p(99)=387.2ms  avg=161.14ms max=651.89ms
+     ✓ { scenario:ingest }..........: p(50)=82.07ms  p(95)=122.91ms p(99)=139.38ms avg=85.55ms  max=243.27ms
+     ✗ { scenario:queue }...........: p(50)=590.71ms p(95)=1.01s    p(99)=1.36s    avg=592.3ms  max=2.01s   
+     ✗ { scenario:suggestions }.....: p(50)=683.25ms p(95)=1.16s    p(99)=1.57s    avg=688ms    max=2.32s   
+     ✗ { scenario:summary }.........: p(50)=204.66ms p(95)=354.93ms p(99)=486.87ms avg=207.47ms max=958.6ms 
+     http_req_failed................: 0.00%   0 out of 155131
+     http_req_receiving.............: p(50)=977.44µs p(95)=7ms      p(99)=10.77ms  avg=2.23ms   max=61.77ms 
+     http_req_sending...............: p(50)=7.75µs   p(95)=20.51µs  p(99)=39.01µs  avg=10.25µs  max=3.2ms   
+     http_req_tls_handshaking.......: p(50)=0s       p(95)=0s       p(99)=0s       avg=0s       max=0s      
+     http_req_waiting...............: p(50)=130.52ms p(95)=658.3ms  p(99)=985.02ms avg=191.29ms max=2.32s   
+     http_reqs......................: 155131  242.3506/s
+     iteration_duration.............: p(50)=135.43ms p(95)=659.13ms p(99)=986.5ms  avg=193.62ms max=2.32s   
+     iterations.....................: 155131  242.3506/s
+     vus............................: 50      min=0                max=50 
+     vus_max........................: 100     min=100              max=100
+
+docker : time="2026-11-17T11:48:51Z" level=error msg="thresholds on metrics 'http_req_duration{scenario:queue}, 
+http_req_duration{scenario:suggestions}, http_req_duration{scenario:summary}' have been crossed"
+At line:1 char:1417
++ ... \loadtest"; docker run --rm --network delco-bench-net -v "${lt}:/lt"  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (time="2026-11-1...e been crossed":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

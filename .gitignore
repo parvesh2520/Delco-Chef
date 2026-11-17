@@ -78,3 +78,7 @@ backend/*.log
 # Part E load test: short-lived access tokens and raw latency dumps
 loadtest/part_e_tokens*.json
 loadtest/.raw_*.json
+
+# k6 raw per-request output (20-80 MB each): kept locally / attached to the submission, not in git
+loadtest/*-raw.json.gz
+loadtest/results-i3-spike.txt

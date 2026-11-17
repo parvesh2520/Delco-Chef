@@ -192,17 +192,19 @@ def moves(request_id: int, p: Principal = Depends(admin_only), db: Session = Dep
 
 @router.get("/stage-summary", summary="C9 funnel: customers per stage, conversion, avg time to assignment")
 def stage_summary(p: Principal = Depends(admin_only), db: Session = Depends(get_db)):
-    c = lambda col: db.scalar(select(func.count()).where(col.is_not(None)).select_from(ServiceRequest)) or 0  # noqa: E731
-    total = db.scalar(select(func.count()).select_from(ServiceRequest)) or 0
-    stages = {"requested": total, "assigned": c(ServiceRequest.assigned_at), "trialDone": c(ServiceRequest.trial_done_at),
-              "subscriptionRequested": c(ServiceRequest.subscription_requested_at), "paid": c(ServiceRequest.paid_at)}
+    # One scan grouped by stage (was 7 full scans); totals are summed from the per-stage rows.
+    R = ServiceRequest
+    rows = db.execute(select(R.stage, func.count(), func.count(R.assigned_at), func.count(R.trial_done_at),
+                             func.count(R.subscription_requested_at), func.count(R.paid_at),
+                             func.sum(func.extract("epoch", R.assigned_at - R.created_at))).group_by(R.stage)).all()
+    by_status = {r[0]: r[1] for r in rows}
+    stages = dict(zip(["requested", "assigned", "trialDone", "subscriptionRequested", "paid"],
+                      (sum(r[i] for r in rows) for i in range(1, 6))))
     keys = list(stages)
     conv = {f"{a}->{b}": round(stages[b] * 100 / stages[a], 1) if stages[a] else 0 for a, b in zip(keys, keys[1:])}
-    avg = db.scalar(select(func.avg(func.extract("epoch", ServiceRequest.assigned_at - ServiceRequest.created_at)))
-                    .where(ServiceRequest.assigned_at.is_not(None)))
-    by_status = dict(db.execute(select(ServiceRequest.stage, func.count()).group_by(ServiceRequest.stage)).all())
-    return {"stages": stages, "conversionPercent": conv, "avgMinutesToAssignment": round(float(avg) / 60, 1) if avg else None,
-            "byStage": by_status}
+    secs = sum(float(r[6] or 0) for r in rows)
+    return {"stages": stages, "conversionPercent": conv,
+            "avgMinutesToAssignment": round(secs / stages["assigned"] / 60, 1) if stages["assigned"] else None, "byStage": by_status}
 
 
 @router.get("/customers/{customer_id}")

@@ -1,0 +1,19 @@
+-- (b) ranked suggestions AFTER: same lookup with a lower bound on starts_at (window start - 1 day)
+                                                                                                                      QUERY PLAN                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ix_visits_chef_starts on visits v  (cost=18.50..65.25 rows=1 width=24) (actual time=0.920..0.920 rows=0 loops=1)
+   Index Cond: ((chef_id = ANY ((InitPlan 1).col1)) AND (starts_at < ('2026-12-01 14:30:00+00'::timestamp with time zone + '06:00:00'::interval)) AND (starts_at > ('2026-12-01 13:30:00+00'::timestamp with time zone - '1 day 06:00:00'::interval)))
+   Filter: ((ends_at > ('2026-12-01 13:30:00+00'::timestamp with time zone - '06:00:00'::interval)) AND ((status)::text = ANY ('{pending_assignment,needs_manual_assignment,scheduled,chef_travelling,checked_in,completed}'::text[])))
+   Rows Removed by Filter: 1
+   Buffers: shared hit=462
+   InitPlan 1
+     ->  Seq Scan on chefs  (cost=0.00..18.20 rows=475 width=8) (actual time=0.007..0.061 rows=475 loops=1)
+           Filter: ((home_lat >= '12.85'::double precision) AND (home_lat <= '13.1'::double precision) AND (home_lng >= '77.5'::double precision) AND (home_lng <= '77.78'::double precision))
+           Rows Removed by Filter: 35
+           Buffers: shared hit=8
+ Planning:
+   Buffers: shared hit=388
+ Planning Time: 1.946 ms
+ Execution Time: 0.952 ms
+(14 rows)
+

@@ -11,7 +11,8 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 RUN useradd -m app && mkdir -p /app/media && chown -R app /app/media
 USER app
 EXPOSE 8000
-# One process: the background worker (outbox, expiry jobs, location flush) runs inside it, so more workers would
-# run every job twice. Migrations run on start only when RUN_MIGRATIONS=true (docker-compose sets it; on Render they
+# One process by default. To scale out, run web containers with RUN_WORKERS=false and WEB_CONCURRENCY=N (uvicorn reads it)
+# plus exactly one container with RUN_WORKERS=true for the outbox and scheduled jobs; every process flushes its own
+# location buffer. Migrations run on start only when RUN_MIGRATIONS=true (docker-compose sets it; on Render they
 # are run deliberately, see docs/RENDER_DEPLOYMENT_GUIDE.md). Render supplies $PORT; it sits behind Render's proxy.
 CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = true ]; then alembic upgrade head || exit 1; fi; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*' --no-server-header --timeout-graceful-shutdown 20"]

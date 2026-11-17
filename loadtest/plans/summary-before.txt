@@ -1,0 +1,98 @@
+-- (e) stage summary BEFORE: 7 statements per request, each a full scan of service_requests
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=1719.38..1719.39 rows=1 width=8) (actual time=5.199..5.200 rows=1 loops=1)
+   Buffers: shared hit=167
+   ->  Index Only Scan using pk_service_requests on service_requests  (cost=0.29..1569.37 rows=60005 width=0) (actual time=0.034..3.280 rows=60005 loops=1)
+         Heap Fetches: 19
+         Buffers: shared hit=167
+ Planning:
+   Buffers: shared hit=134
+ Planning Time: 0.654 ms
+ Execution Time: 5.232 ms
+(9 rows)
+
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2370.06..2370.07 rows=1 width=8) (actual time=7.733..7.734 rows=1 loops=1)
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=60003 width=0) (actual time=0.007..5.927 rows=60004 loops=1)
+         Filter: (assigned_at IS NOT NULL)
+         Rows Removed by Filter: 1
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=10
+ Planning Time: 0.103 ms
+ Execution Time: 7.790 ms
+(10 rows)
+
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2220.06..2220.07 rows=1 width=8) (actual time=4.071..4.072 rows=1 loops=1)
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=2 width=0) (actual time=0.005..4.068 rows=3 loops=1)
+         Filter: (trial_done_at IS NOT NULL)
+         Rows Removed by Filter: 60002
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.072 ms
+ Execution Time: 4.086 ms
+(10 rows)
+
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2220.05..2220.06 rows=1 width=8) (actual time=3.788..3.789 rows=1 loops=1)
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=1 width=0) (actual time=0.005..3.786 rows=2 loops=1)
+         Filter: (subscription_requested_at IS NOT NULL)
+         Rows Removed by Filter: 60003
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.076 ms
+ Execution Time: 3.801 ms
+(10 rows)
+
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2220.05..2220.06 rows=1 width=8) (actual time=4.055..4.056 rows=1 loops=1)
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=1 width=0) (actual time=0.005..4.053 rows=1 loops=1)
+         Filter: (paid_at IS NOT NULL)
+         Rows Removed by Filter: 60004
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.074 ms
+ Execution Time: 4.069 ms
+(10 rows)
+
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2670.08..2670.09 rows=1 width=32) (actual time=11.596..11.597 rows=1 loops=1)
+   Buffers: shared hit=1620
+   ->  Seq Scan on service_requests  (cost=0.00..2220.05 rows=60003 width=16) (actual time=0.005..5.291 rows=60004 loops=1)
+         Filter: (assigned_at IS NOT NULL)
+         Rows Removed by Filter: 1
+         Buffers: shared hit=1620
+ Planning:
+   Buffers: shared hit=24
+ Planning Time: 0.215 ms
+ Execution Time: 11.628 ms
+(10 rows)
+
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate  (cost=0.41..2484.12 rows=5 width=17) (actual time=3.862..6.432 rows=6 loops=1)
+   Group Key: stage
+   Buffers: shared hit=319
+   ->  Index Only Scan using ix_requests_stage_created on service_requests  (cost=0.41..2184.04 rows=60005 width=9) (actual time=0.014..3.462 rows=60005 loops=1)
+         Heap Fetches: 19
+         Buffers: shared hit=319
+ Planning:
+   Buffers: shared hit=36
+ Planning Time: 0.137 ms
+ Execution Time: 6.472 ms
+(10 rows)
+

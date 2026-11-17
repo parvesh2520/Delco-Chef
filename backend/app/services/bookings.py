@@ -11,7 +11,7 @@ from app.domain import IST, ist_datetime, ist_today, parse_hhmm
 from app.domain import board
 from app.domain.geo import bounding_box
 from app.domain.ranking import BookingSlot, ChefCandidate, Weights, rank
-from app.models import (Address, Assignment, BoardMove, Chef, ChefOffDay, CustomerProfile, ServiceRequest, Subscription,
+from app.models import (Address, Assignment, BoardMove, Chef, ChefOffDay, ChefSkill, CustomerProfile, ServiceRequest, Subscription,
                         Trial, User, Visit)
 from app.services import settings as settings_svc
 from app.services.events import SYSTEM, Actor, audit, notify, notify_admins
@@ -244,26 +244,33 @@ def candidates(db: Session, v: Visit, s: Settings) -> list[ChefCandidate]:
     radius = s.float("radius_km")
     # Bounding box at 1.5× radius: index-assisted, also surfaces nearby excluded chefs with their reasons.
     la0, la1, ln0, ln1 = bounding_box(v.lat, v.lng, radius * 1.5)
-    chefs = db.execute(select(Chef, User.full_name).join(User, User.id == Chef.user_id)
+    # Plain columns, not ORM objects: hundreds of chefs per call, and Chef.skills would selectin-load a row object per skill.
+    chefs = db.execute(select(Chef.id, User.full_name, Chef.rating, Chef.home_lat, Chef.home_lng, Chef.active, Chef.status,
+                              Chef.experience_years).join(User, User.id == Chef.user_id)
                        .where(Chef.home_lat.between(la0, la1), Chef.home_lng.between(ln0, ln1),
                               Chef.status != "draft", User.status == "active")).all()
     if not chefs:
         return []
-    ids = [c.id for c, _ in chefs]
+    ids = [c.id for c in chefs]
+    skills: dict[int, set] = {}
+    for cid, cuisine in db.execute(select(ChefSkill.chef_id, ChefSkill.cuisine).where(ChefSkill.chef_id.in_(ids))):
+        skills.setdefault(cid, set()).add(cuisine)
     off = {(cid, d) for cid, d in db.execute(select(ChefOffDay.chef_id, ChefOffDay.day).where(
         ChefOffDay.chef_id.in_(ids), ChefOffDay.day == v.service_date))}
     busy: dict[int, list] = {}
     for cid, st, en in db.execute(select(Visit.chef_id, Visit.starts_at, Visit.ends_at).where(
             Visit.chef_id.in_(ids), Visit.id != v.id, Visit.status.in_(LIVE_VISIT + ("completed",)),
-            Visit.starts_at < v.ends_at + timedelta(hours=6), Visit.ends_at > v.starts_at - timedelta(hours=6))):
+            Visit.starts_at < v.ends_at + timedelta(hours=6), Visit.ends_at > v.starts_at - timedelta(hours=6),
+            # Lower bound on the indexed column (no visit lasts a day): without it ix_visits_chef_starts reads every past visit.
+            Visit.starts_at > v.starts_at - timedelta(hours=6, days=1))):
         busy.setdefault(cid, []).append((st, en))
     w0, w1 = _week_bounds(v.service_date)
     jobs = dict(db.execute(select(Visit.chef_id, func.count()).where(
         Visit.chef_id.in_(ids), Visit.service_date.between(w0, w1), Visit.status != "cancelled", Visit.id != v.id)
         .group_by(Visit.chef_id)).all())
-    return [ChefCandidate(c.id, name or f"Chef {c.id}", float(c.rating), c.home_lat, c.home_lng, c.active,
-                          c.status == "approved", {sk.cuisine for sk in c.skills}, {d for cid, d in off if cid == c.id},
-                          busy.get(c.id, []), jobs.get(c.id, 0), c.experience_years) for c, name in chefs]
+    return [ChefCandidate(c.id, c.full_name or f"Chef {c.id}", float(c.rating), c.home_lat, c.home_lng, c.active,
+                          c.status == "approved", skills.get(c.id, set()), {d for cid, d in off if cid == c.id},
+                          busy.get(c.id, []), jobs.get(c.id, 0), c.experience_years) for c in chefs]
 
 
 def suggest(db: Session, v: Visit, s: Settings | None = None) -> list:

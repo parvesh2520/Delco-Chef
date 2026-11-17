@@ -1,0 +1,23 @@
+-- (b) ranked suggestions BEFORE: busy-chef lookup for the proposed visit (request 3, 2026-12-01 19:00 IST), all chefs in the search box
+                                                                                                               QUERY PLAN                                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on visits v  (cost=72.80..1423.79 rows=3 width=24) (actual time=8.692..8.693 rows=0 loops=1)
+   Recheck Cond: ((chef_id = ANY ((InitPlan 1).col1)) AND (starts_at < ('2026-12-01 14:30:00+00'::timestamp with time zone + '06:00:00'::interval)))
+   Filter: ((ends_at > ('2026-12-01 13:30:00+00'::timestamp with time zone - '06:00:00'::interval)) AND ((status)::text = ANY ('{pending_assignment,needs_manual_assignment,scheduled,chef_travelling,checked_in,completed}'::text[])))
+   Rows Removed by Filter: 55818
+   Heap Blocks: exact=1220
+   Buffers: shared hit=1242 read=232
+   InitPlan 1
+     ->  Seq Scan on chefs  (cost=0.00..18.20 rows=475 width=8) (actual time=0.007..0.060 rows=475 loops=1)
+           Filter: ((home_lat >= '12.85'::double precision) AND (home_lat <= '13.1'::double precision) AND (home_lng >= '77.5'::double precision) AND (home_lng <= '77.78'::double precision))
+           Rows Removed by Filter: 35
+           Buffers: shared hit=8
+   ->  Bitmap Index Scan on ix_visits_chef_starts  (cost=0.00..54.60 rows=1173 width=0) (actual time=3.396..3.396 rows=55825 loops=1)
+         Index Cond: ((chef_id = ANY ((InitPlan 1).col1)) AND (starts_at < ('2026-12-01 14:30:00+00'::timestamp with time zone + '06:00:00'::interval)))
+         Buffers: shared hit=22 read=232
+ Planning:
+   Buffers: shared hit=388
+ Planning Time: 1.814 ms
+ Execution Time: 8.761 ms
+(18 rows)
+

@@ -65,15 +65,20 @@ def _run(name: str, fn, *args) -> None:
         db.close()
 
 
-def _loop() -> None:
+def _loop(jobs: bool) -> None:
+    """Every process flushes its own in-memory location buffer. Only `jobs` processes (RUN_WORKERS=true) also deliver the
+    outbox and run the scheduled jobs, so web processes can be scaled out without running those twice."""
     from app.services import attendance, bookings, payments, payouts, privacy, tracking
     last = {"minute": 0.0, "hour": 0.0, "day": 0.0}
     while not _stop.is_set():
+        _run("location_flush", tracking.flush)
+        if not jobs:
+            _stop.wait(2)
+            continue
         try:
             deliver_outbox()
         except Exception:  # noqa: BLE001
             log.exception("Outbox loop failed")
-        _run("location_flush", tracking.flush)
         t = time.monotonic()
         if t - last["minute"] >= 60:
             last["minute"] = t
@@ -90,9 +95,9 @@ def _loop() -> None:
         _stop.wait(2)
 
 
-def start() -> threading.Thread:
+def start(jobs: bool = True) -> threading.Thread:
     _stop.clear()
-    th = threading.Thread(target=_loop, name="delco-worker", daemon=True)
+    th = threading.Thread(target=_loop, args=(jobs,), name="delco-worker", daemon=True)
     th.start()
     return th
 

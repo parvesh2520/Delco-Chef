@@ -1,0 +1,21 @@
+-- (d) admin queue AFTER (same SQL as before; this endpoint was already index-backed, its cost was per-row round trips, fixed by Prefetch: 304 -> 11 statements)
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.82..23.27 rows=51 width=1705) (actual time=0.218..0.300 rows=51 loops=1)
+   Buffers: shared hit=115
+   ->  Incremental Sort  (cost=0.82..7958.98 rows=18079 width=1705) (actual time=0.217..0.296 rows=51 loops=1)
+         Sort Key: created_at DESC, id DESC
+         Presorted Key: created_at
+         Full-sort Groups: 2  Sort Method: quicksort  Average Memory: 33kB  Peak Memory: 33kB
+         Buffers: shared hit=115
+         ->  Index Scan Backward using ix_requests_stage_created on service_requests  (cost=0.41..7145.43 rows=18079 width=1705) (actual time=0.022..0.243 rows=52 loops=1)
+               Index Cond: ((stage)::text = 'closed'::text)
+               Filter: ((service)::text = 'custom_time'::text)
+               Rows Removed by Filter: 51
+               Buffers: shared hit=106
+ Planning:
+   Buffers: shared hit=237
+ Planning Time: 0.977 ms
+ Execution Time: 0.348 ms
+(16 rows)
+

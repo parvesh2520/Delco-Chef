@@ -20,8 +20,7 @@ log = logging.getLogger("app")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     from app.services import worker
-    if settings.RUN_WORKERS:
-        worker.start()
+    worker.start(jobs=settings.RUN_WORKERS)  # location flush always; outbox + scheduled jobs only with RUN_WORKERS
     from app.services.gateway import get_gateway
     log.info("Started %s %s (%s), payment gateway: %s, file storage: %s", settings.PROJECT_NAME, settings.VERSION,
              settings.ENVIRONMENT, get_gateway().name, "s3" if settings.S3_BUCKET else "local disk")

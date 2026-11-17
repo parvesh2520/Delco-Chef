@@ -4,7 +4,7 @@ import json
 import sys
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -21,7 +21,9 @@ def main():
     if "neon.tech" in settings.sqlalchemy_url or settings.is_production:
         sys.exit("Benchmark tokens are for the local benchmark database only.")
     db = SessionLocal()
-    cust = db.scalar(select(User).where(User.role == "customer", User.is_seed).limit(1))
+    # The busiest customer, so history is measured on a full page of 20.
+    cust = db.scalar(select(User).join(ServiceRequest, ServiceRequest.customer_id == User.id).where(User.role == "customer", User.is_seed)
+                     .group_by(User.id).order_by(func.count(ServiceRequest.id).desc()).limit(1))
     chef = db.scalar(select(Chef).where(Chef.is_seed).limit(1))
     admin = db.scalar(select(User).where(User.role == "ops_admin"))
     if admin is None:

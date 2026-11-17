@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     S3_REGION: str = "auto"             # R2: auto ; AWS: e.g. ap-south-1
     S3_ACCESS_KEY_ID: str | None = None
     S3_SECRET_ACCESS_KEY: str | None = None
-    RUN_WORKERS: bool = True  # background outbox / location flush / scheduled jobs
+    RUN_WORKERS: bool = True  # outbox + scheduled jobs in this process (exactly one). Location flush runs in every process.
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore")
 
