@@ -48,7 +48,7 @@ Maps need `GOOGLE_MAPS_API_KEY` at build time. Without it, set `EXPO_PUBLIC_MAPS
 | Customer | 9876543213 / 9876543214 | Active paid subscription / payment link waiting |
 | Chef (approved) | 9111111111 | Asha (Part B fixture). 9111111113–19 are the other Part B chefs |
 | Chef (rejected) | 9111111112 | Shows the rejection reason |
-| Ops Admin | 9000000001 | |
+| Ops Admin | 9453014530 | |
 | Super Admin | 9000000002 | |
 
 Seeded rows have `is_seed = true`. To remove them, run `python -m scripts.seed --purge`. Seeding refuses to run in production.

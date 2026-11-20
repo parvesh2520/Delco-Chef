@@ -44,13 +44,11 @@ class Settings(BaseSettings):
     # A refresh token that was just rotated may be presented once more within this window (the phone lost the response).
     REFRESH_REUSE_GRACE_SECONDS: int = 300
 
-    OTP_PROVIDER: str = "log"  # log (server log only) | fast2sms | messagecentral (VerifyNow: it makes and checks the code)
+    OTP_PROVIDER: str = "log"  # log (server log only) | fast2sms
     # Codes are written to the server log outside production. In production only when this is true: a deliberate
     # switch for test deployments (anyone who can read the logs can sign in as anyone). Works with every provider.
     OTP_LOG_CODES: bool = False
     FAST2SMS_API_KEY: str = ""  # required when OTP_PROVIDER=fast2sms
-    MESSAGE_CENTRAL_CUSTOMER_ID: str = ""  # required when OTP_PROVIDER=messagecentral, e.g. C-1234ABCD
-    MESSAGE_CENTRAL_PASSWORD: str = ""     # account password; sent base64-encoded as the token API's `key`
     # Comma-separated test numbers (fake accounts): never sent an SMS, their code goes to the log only (needs codes in
     # the log, see OTP_LOG_CODES). Stops real SMS reaching whoever owns a made-up number.
     OTP_TEST_PHONES: str = ""

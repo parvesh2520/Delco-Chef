@@ -79,7 +79,7 @@ class Trial(IdMixin, TimestampMixin, SeedMixin, Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pushed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     __table_args__ = (
-        CheckConstraint("number in (1, 2)", name="max_two"),
+        CheckConstraint("number in (1, 2)", name="max_one"),
         CheckConstraint("status in ('requested','pending_assignment','scheduled','in_progress','completed','cancelled')", name="status"),
         CheckConstraint("decision is null or decision in ('subscribe','another_trial','reject')", name="decision"),
         # Structural guard against a third trial: per customer+service only trial #1 and #2 can be live.

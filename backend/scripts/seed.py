@@ -23,7 +23,7 @@ from app.services.worker import deliver_outbox
 
 PIN = (12.9784, 77.6408)  # Indiranagar, Bengaluru (Part B booking pin)
 
-ADMINS = [("9000000001", "Karan Mehta", "ops_admin"), ("9000000002", "Riya Kapoor", "super_admin")]
+ADMINS = [("9453014530", "Karan Mehta", "ops_admin"), ("9000000002", "Riya Kapoor", "super_admin")]
 # Part B fixture chefs (fictional), plus a rejected applicant.
 CHEFS = [("9111111111", "Asha Rao", 12.9716, 77.6412, 4.6, ["North Indian", "Punjabi"], "approved", True),
          ("9111111113", "Esha Iyer", 12.9988, 77.6590, 4.4, ["North Indian", "South Indian"], "approved", True),
